@@ -134,7 +134,7 @@ If you'd rather not use the installer, or want to test or change the system your
 
 ```bat
 git clone https://github.com/MaxiBono/MaXMB
-cd <the repository's folder>
+cd MaXMB
 npm install
 npm run dev
 ```
