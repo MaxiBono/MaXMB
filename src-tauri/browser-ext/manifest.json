@@ -1,0 +1,23 @@
+{
+  "manifest_version": 2,
+  "name": "MaXMB Browser Helper",
+  "version": "__VERSION__",
+  "description": "Runs MaXMB's in-app browser window: opens it on your default search engine / home page, keeps it controller-friendly (back, forward, address, search, typing from the on-screen keyboard) and switches to the XMB palm / fist / click cursors.",
+  "browser_specific_settings": { "gecko": { "id": "__ID__", "strict_min_version": "109.0" } },
+  "permissions": [
+    "tabs",
+    "search",
+    "browserSettings",
+    "<all_urls>",
+    "http://127.0.0.1/*"
+  ],
+  "background": { "scripts": ["background.js"] },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "js": ["helper.js"]
+    }
+  ]
+}

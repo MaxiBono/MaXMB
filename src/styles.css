@@ -1,0 +1,2103 @@
+/* ---------- fonts & tokens ---------- */
+/* The font's vertical metrics are pinned (its hhea values) so text sits at the
+   same height on Windows (which otherwise uses the much taller "win" metrics)
+   as in the reference measurements. */
+@font-face { font-family: "Rodin"; src: url("./assets/fonts/rodin.ttf") format("truetype"); font-display: swap;
+  ascent-override: 78%; descent-override: 19.3%; line-gap-override: 6.2%; }
+:root {
+  --icon-color: #ffffff;
+  --ui-font: "Rodin", "Segoe UI", system-ui, sans-serif;
+  --text: #f4f4f4;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #05070c; }
+body { font-family: var(--ui-font); color: var(--text); user-select: none; -webkit-user-select: none;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.55); } /* subtle legibility shadow on TEXT only */
+img { -webkit-user-drag: none; }
+/* fields and buttons take the font in use too */
+button, input, textarea, select { font-family: var(--ui-font); }
+/* passwords always stay as dots: no "show password" eye (WebView2 / Edge adds one) */
+input::-ms-reveal, input::-ms-clear { display: none !important; }
+
+#wave { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; }
+/* real-style WebGL wave: fills the screen behind the cross (the only wave style) */
+.wavegl { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; display: none; }
+.wavegl.show { display: block; }
+/* optional theme wallpaper image, behind the (transparent-in-wallpaper-mode) wave */
+/* the background is always shown whole (no cropping, no stretching) */
+/* a PS3 theme's background, under the user's own background picture */
+.p3tbg { position: fixed; inset: 0; z-index: 0; background: #000; display: none; pointer-events: none; }
+.p3tbg.show { display: block; }
+/* a theme's overlay alone (Theme Background off): see-through, over your own background and the waves */
+.p3tbg.ovonly { background: transparent; z-index: 2; }
+.p3tbg > .p3t-still, .p3tbg > .p3t-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity .6s; }
+.p3tbg > .p3t-canvas { opacity: 0; }
+.p3tbg > .p3t-canvas.ready { opacity: 1; }
+.p3tbg > .p3t-still.hid { opacity: 0; }
+.wallpaper { position: fixed; inset: 0; z-index: 0; background: transparent; display: none; }
+/* black (behind a picture that doesn't fill the screen) only once the picture is there */
+.wallpaper.ready { background: #000; }
+.wallpaper.show { display: block; }
+/* the Music Player's Visualizer Wave: only the wave's own background, wave and sparkles behind it */
+body.mpvis #wallpaper, body.mpvis #overlay, body.mpvis #p3tbg, body.mpvis #bgtint { visibility: hidden; }
+.bgtint { position: fixed; inset: 0; z-index: 0; display: none; pointer-events: none; }
+.bgtint.show { display: block; }
+.overlaylayer { position: fixed; inset: 0; z-index: 0; display: none; pointer-events: none; }
+.overlaylayer.show { display: block; }
+.wallpaper > img, .wallpaper > video, .overlaylayer > img, .overlaylayer > video, .overlaylayer > canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+
+/* ---------- top-right info area: fixed white-outline box, profile outside it ---------- */
+.infobox {
+  position: fixed; top: 6.85vh; right: 0; z-index: 40;
+  display: flex; align-items: center; color: var(--text);
+}
+/* the rectangle, measured from real 1920x1080 XMB captures: x 1329 → screen
+   edge, y 74 → 132, open on the right. Its edge is a thin bright hairline with
+   a soft bevel glow fading ~6px INWARD (no outer glow), a barely-there dark
+   fill, and very slightly rounded left corners. The date+time+clock group sits
+   at a fixed distance from the right edge (clock ends at x 1805). */
+.ib-box {
+  position: relative;
+  display: flex; align-items: center; gap: 1.2vw;
+  width: 30.78vw; height: 5.37vh; box-sizing: border-box;
+  padding: 0 5.99vw 0 0.6vw;
+  border: 1px solid rgba(255,255,255,0.36);
+  border-right: none; border-radius: 0.37vh 0 0 0.37vh;
+  background: rgba(0,0,0,0.035);
+  box-shadow: inset 1px 1px 5px rgba(255,255,255,0.22), inset 1px -1px 5px rgba(255,255,255,0.22);
+}
+/* left group, placed from the Friends capture (CAB30248): PS Plus mark
+   x 1342-1368, PSN avatar 1373-1403, friends icon 1414-1431 and the count from
+   x 1436, all centred on the box's middle line (y 103). The slots are fixed, so
+   the avatar sits in the same place whether PS Plus is on or off. */
+.ib-profile { position: absolute; left: 0; top: 0; bottom: 0; width: 9vw; font-size: 2.5vh; }
+.ib-profile.ib-hide { visibility: hidden; }
+.ib-profile > * { position: absolute; top: 50%; transform: translateY(-50%); }
+.ib-plus { left: 0.24vw; width: 3.2vh; height: 3.2vh; object-fit: contain; visibility: hidden; }
+.ib-plus.on { visibility: inherit; }   /* (inherit, so a hidden info box hides it too) */
+.ib-plus:not(.on) { visibility: hidden; }
+.ib-avatar { left: 2.29vw; width: 2.78vh; height: 2.78vh; object-fit: cover; opacity: 1; }
+.ib-friends { left: 4.48vw; display: flex; align-items: center; gap: 0.26vw; line-height: 1; }
+.ib-dot { width: 1.95vh; height: 1.95vh; flex: 0 0 auto; border-radius: 0.25vh;
+  background: var(--ib-friends-img, url('./assets/icons/avatars/stock/square_grey.png')) center/contain no-repeat; }
+.ib-count { display: block; font-size: 1.75vh; line-height: 1; transform: translateY(0.32vh); }   /* digits centred on the friends icon */
+/* message mark (when any friend card has one): capture x 1509-1531, centred
+   on the box (the 128 px texture's glyph is 64 px wide) */
+.ib-mail { left: 9.95vw; transform: translate(-50%, -50%) !important; width: 4.07vh; height: 4.07vh; object-fit: contain; visibility: hidden; }
+.ib-mail.on { visibility: inherit; }   /* digits about as tall as the friends icon, smaller than the date / time */
+/* before anyone has logged in, the box is the short one (Log In capture: x 1509) */
+body.no-user .ib-box { width: 21.4vw; }
+body.no-user .ib-profile { opacity: 0; visibility: hidden; transition: none; }
+/* picking a user: the box grows out to the left from its short form, then the
+   profile slots fade in */
+.ib-box { transition: width .55s cubic-bezier(.22,.8,.3,1); }
+/* (inherit, not visible: wherever the info box is hidden, as behind the
+   Internet Browser, its icons (the message mark too) are hidden with it) */
+.ib-profile { opacity: 1; visibility: inherit; transition: opacity .35s ease .35s, visibility 0s linear .35s; }
+/* date + time + clock: right-aligned (clock ends at x 1805) and vertically
+   centred on the box (text x-height centre y 104, clock centre y 103) */
+.ib-dt { display: inline-flex; align-items: center; justify-content: flex-end; gap: 0.6vw; min-width: 9.2vw; margin-left: auto;
+  line-height: 1; transform: translateY(0.33vh); }
+.ib-date, .ib-time { font-size: 2.2vh; line-height: 1; }
+.ib-clock { color: #f4f4f4; width: 2.96vh; height: 2.96vh; flex: 0 0 auto; margin-left: -0.52vw;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.45)); }
+
+/* ---------- XMB cross ---------- */
+.xmb { position: fixed; inset: 0; z-index: 10; opacity: 0; pointer-events: none; transition: opacity 0.5s ease, transform .22s ease; }
+.xmb.show { opacity: 1; pointer-events: auto; }
+
+.bg-layer { position: absolute; inset: 0; background-size: cover; background-position: center;
+  opacity: 0; transition: opacity 0.7s ease, transform .22s ease; z-index: -1; }
+.bg-layer.show { opacity: 1; }
+
+/* the cross (categories, items, detail, anchor): positions come from the
+   JS layout, matched to a real 1920x1080 XMB capture; no extra vertical shift. */
+.cat-row, .item-col { position: absolute; inset: 0; pointer-events: none; }
+/* the detail block is anchored on the TITLE line: its centre sits on the icon
+   centre and the description / extra lines flow downward. */
+.cat, .item { pointer-events: auto; }
+.cat-row.dim .cat { opacity: 0.18 !important; }
+
+/* white tintable icons: semi-transparent like the real XMB, NO drop shadow. */
+.sysicon {
+  display: block; width: 13.82vh; height: 13.82vh;
+  /* soft PS3 gloss (matches the real reference): a bright specular top that
+     fades to the base by the midline, then a flat base with only a whisper of
+     shadow at the very bottom: no metallic reflection cut, minimal black. */
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--icon-color) 80%, #fff) 0%,
+    color-mix(in srgb, var(--icon-color) 96%, #fff) 12%,
+    var(--icon-color) 28%,
+    color-mix(in srgb, var(--icon-color) 82%, #000) 47%,
+    color-mix(in srgb, var(--icon-color) 96%, #fff) 55%,
+    var(--icon-color) 62%,
+    color-mix(in srgb, var(--icon-color) 83%, #000) 100%);
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: contain; mask-size: contain;
+  transition: width .24s ease, height .24s ease;
+}
+/* Icon Style "Flat": the plain icon in the Icon Color, no shading at all */
+/* (pictures shown as they are (a theme's icons in their own colours without
+   its Icon Style, custom section pictures) aren't filled: they'd become squares) */
+:root[data-icons="flat"] .sysicon:not(.coloricon):not(.customicon):not(.themeown) { background: var(--icon-color) !important; }
+/* the XMB's tintable icons stay invisible until their glossy glass image is
+   ready (no flash of the plain white fill) */
+:root[data-icons="xmbw"] #xmb .sysicon[data-sys]:not(.coloricon):not(.xs-ready):not(.xs-late) { background: none !important; }
+/* ---- "Glossy" icon style: the masked (tintable) icons are filled with the
+   same translucent glossy sheen used by the description rectangle: a bright
+   specular top fading to a soft translucent base: so they read as glossy glass
+   over the wave. No blur, no refraction. Applies to BOTH category and sub-item
+   masked icons; full-colour brand icons keep their normal look. */
+:root[data-icons="glossy"] .sysicon:not(.coloricon) {
+  background: linear-gradient(160deg,
+    rgba(255,255,255,0.95) 0%,
+    rgba(255,255,255,0.62) 22%,
+    rgba(255,255,255,0.40) 52%,
+    rgba(255,255,255,0.20) 100%);
+}
+/* ---- "Inverted" icon style: the normal fill uses a glossy vertical ramp with
+   a mid specular CUT (dark at ~47%, bright again at ~55%), which drops a false
+   highlight on the lower half and a false shadow through the middle: so the
+   icon's own baked-in top lighting reads inverted. This style replaces that
+   with a clean single top-lit diffuse ramp (bright top -> soft shadow bottom,
+   no mid cut), so the shadows/lighting sit the right way up. */
+:root[data-icons="inverted"] .sysicon:not(.coloricon) {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--icon-color) 55%, #fff) 0%,
+    color-mix(in srgb, var(--icon-color) 88%, #fff) 22%,
+    var(--icon-color) 48%,
+    color-mix(in srgb, var(--icon-color) 88%, #000) 78%,
+    color-mix(in srgb, var(--icon-color) 74%, #000) 100%);
+}
+/* full-colour brand icons (PSN / Store / Home) are images, never tinted */
+.coloricon { background: none !important; -webkit-mask-image: none !important; mask-image: none !important; object-fit: contain; }
+/* A masked icon's artwork only fills ~55% of its box, but a full-colour image
+   fills the whole box: which made the PSN category sphere look oversized next
+   to the masked icons. Scale colour icons down so their visual weight matches
+   the masked glyphs (matches the real XMB). */
+.cat .coloricon { transform: scale(0.70); }
+/* PlayStation®Network "Modern Version" (tex_psn): a 70 px circle, 102 px
+   selected and sitting a little higher, title on one line */
+.cat .coloricon.ic-tex_psn { transform: scale(0.865); }
+.cat.sel .coloricon.ic-tex_psn { transform: translateY(-1vh) scale(0.865); }
+.cat:has(.ic-tex_psn) .cat-label { margin-top: calc(var(--cat-label-dy, 5.66vh) - 1.4vh); }
+.item-sys.coloricon { transform: scale(0.72); }
+/* Some colour icons are large in their section reference (photo collage stack,
+   the △○X□ sign-in/up button): size these to match the refs, overriding the
+   uniform colour-icon scale. */
+.item-sys.coloricon.ic-photo_gallery { transform: scale(1.16); }
+.item:not(.sel) .item-sys.coloricon.ic-photo_gallery { transform: scale(0.95); }
+.item-sys.coloricon.ic-signup, .item-sys.coloricon.ic-signin { transform: scale(0.95); }
+/* Sign In: the "Signing In" picture fades in over it while it's chosen */
+.signin-pair { position: relative; display: block; }
+.signin-pair > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; transition: opacity .35s ease; }
+.signin-pair > .si-b { opacity: 0; }
+.item.sel .signin-pair > .si-b { opacity: 1; }
+.item.sel .signin-pair > .si-a { opacity: 0; }
+
+/* media-section sort indicator (Square cycles All / By Album / …): a small
+   section icon + the mode name at top-left, under a semi-transparent top bar. */
+/* horizontal version of the games "options" panel gradient: a dark band that is
+   strongest at the very top screen edge and fades downward, with a bright
+   shining line along its lower edge. Appears briefly then fades out after ~1s. */
+/* Square sort bar (Game capture "By Album" / "By Format"): a lighter band from
+   the top of the screen down to a thin white line at y ~135, the section's
+   small icon + the mode name sitting just above the line at the left. */
+/* Square (the order of a media section): the band across the top as on the
+   console (measured from a capture): a pale see-through band, lightest in its
+   middle, with a bright line along its bottom and a thin shadow under it. It
+   shows as it is, then fades away. */
+.media-topbar { position: absolute; left: 0; right: 0; top: 0; height: 11.85vh; display: none;
+  pointer-events: none; z-index: 1; opacity: 1; transition: opacity 0.6s ease;
+  background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.16) 25%, rgba(255,255,255,0.22) 50%,
+    rgba(255,255,255,0.21) 85%, rgba(255,255,255,0.12) 100%);
+  border-bottom: 0.19vh solid rgba(255,255,255,0.6); box-shadow: 0 0.1vh 0 rgba(0,0,0,0.22); }
+.media-topbar.show { display: block; }
+.media-sort { position: absolute; left: 6.25vw; top: 9.1vh; height: 3vh; display: none; align-items: center; gap: 0.75vw;
+  pointer-events: none; z-index: 2; opacity: 1; transition: opacity 0.6s ease; }
+.media-sort.show { display: flex; }
+.media-topbar.fade, .media-sort.fade { opacity: 0; }
+.media-sort .ms-icon { width: 2.6vh; height: 2.6vh; opacity: 1; }
+.media-sort .ms-label { font-size: 2.15vh; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.4); }
+
+/* clean menu backdrop: hide the cross + info box, leaving only wave + menu */
+body.menu-open #xmb, body.menu-open #infobox { visibility: hidden; }
+body.booting #infobox { visibility: hidden; }
+/* the profile slots set their own visibility (for the fade-in), so hide them too */
+body.menu-open #infobox .ib-profile, body.booting #infobox .ib-profile { visibility: hidden; transition: none; }
+/* Cursor idle-hide: the pointer starts hidden and reappears on mouse move or
+   click, then hides again after 3s of no mouse activity (managed in main.js).
+   The mouse stays usable throughout. */
+body.hide-cursor, body.hide-cursor * { cursor: none !important; }
+/* In the video player the pointer stays hidden the whole time. */
+/* on-screen keyboard keys are always clickable and show a pointer */
+.osk-k { cursor: pointer; pointer-events: auto; }
+
+/* categories */
+/* the .cat box is the ICON only (so left/top place the icon centre exactly);
+   the label hangs below it, top-anchored, so a two-line label (PlayStation®
+   / Network) grows downward like the real XMB. */
+.cat { position: absolute; transform: translate(-50%, -50%); display: block;
+  transition: left 0.34s cubic-bezier(.34,1.08,.42,1), top 0.34s cubic-bezier(.34,1.08,.42,1), opacity 0.34s ease; cursor: pointer; }
+.cat .sysicon { width: 11.25vh; height: 11.25vh; opacity: 0.85; }
+.cat.sel .sysicon { width: 16.51vh; height: 16.51vh; opacity: 0.9; }
+/* on a bright background (yellow, gold, silver months) the console's icons
+   are nearly solid, so they stand out from it */
+:root[data-bright-bg][data-istyle="default"] .cat .sysicon:not(.coloricon), :root[data-bright-bg][data-istyle="default"] .item .sysicon:not(.coloricon) { opacity: 1; }
+.cat-label { position: absolute; left: 50%; top: 50%; transform: translateX(-50%); margin-top: var(--cat-label-dy, 5.66vh);
+  font-size: 2.04vh; line-height: 1.95vh; text-align: center; white-space: pre; opacity: 0; transition: opacity .2s ease; pointer-events: none; }
+.cat.sel .cat-label { opacity: 1; }
+.cat-row.drilled .cat-label { opacity: 0; }
+
+/* drilled-in subsection head (icon on the left, like Reference_2) */
+.crumb { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column;
+  align-items: center; gap: 8px; opacity: 0; transition: opacity .25s ease; }
+.crumb.show { opacity: 1; }
+.crumb .sysicon { width: 16.51vh; height: 16.51vh; }
+
+/* items: icons nearly as large as category icons (caveat 9) */
+.item.fresh { transition: none !important; }
+/* a media picture still loading: the preload spinner in its place */
+.art-loading > .art-img, .art-loading > .ff-thumb, .art-loading > .item-avatar { opacity: 0; }
+/* the loading icon of a media picture that's still loading: sized with its
+   icon's frame (as on the console: large on the selected item, small on the
+   others), turning in place */
+.art-spin { position: absolute; left: 50%; top: 50%; height: 25%; width: auto; max-width: 80%; object-fit: contain;
+  animation: xmbSpinC 0.9s linear infinite; pointer-events: none; z-index: 2; }
+.item.sel .art-spin, .item.item-anchor .art-spin { height: 26%; }
+/* (IMG_3613) in the XMB's columns the loading icon has a fixed size: about
+   the width of the title's two lines on the other items, and a good deal
+   bigger on the selected one; the section's icon fills most of its middle.
+   (Sizes measured against the 80 px row pitch of the capture.) */
+.item-col .item .art-spin { height: 4.45vh; max-width: none; }
+.item-col .item.sel .art-spin, .item-col .item.item-anchor .art-spin { height: 7.2vh; }
+/* (an avatar loading: its row has no width of its own, the loading icon keeps its shape) */
+.item > .art-spin { max-width: none; }
+@keyframes xmbSpinC { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+/* (IMG_3615) the XMB's own lists: the section's icon, flat, in the Icon Color,
+   still in the middle of the turning loading icon */
+.art-flat { position: absolute; left: 50%; top: 50%; height: 18%; aspect-ratio: 1; transform: translate(-50%, -50%); z-index: 3; pointer-events: none;
+  background: var(--icon-color, #fff); -webkit-mask: var(--flat) center / contain no-repeat; mask: var(--flat) center / contain no-repeat; }
+.item.sel .art-flat, .item.item-anchor .art-flat { height: 18.7%; }
+.item-col .item .art-flat { height: 4.15vh; }
+.item-col .item.sel .art-flat, .item-col .item.item-anchor .art-flat { height: 7.75vh; }
+.item-col.has-flat .item .av-wait::after { content: ""; position: absolute; left: 50%; top: 50%; height: 18.7%; aspect-ratio: 1; transform: translate(-50%, -50%);
+  z-index: 3; pointer-events: none; background: var(--icon-color, #fff);
+  -webkit-mask: var(--sec-flat) center / contain no-repeat; mask: var(--sec-flat) center / contain no-repeat; }
+/* a folder whose picture is loading: the whole folder gives way to the loading icon until it's ready */
+.folder-frame.art-loading > :not(.art-spin):not(.art-flat) { opacity: 0 !important; }
+/* avatars loading (Avatar selection, PSN cards): the media loading icon in
+   the middle of the box until the picture is there */
+.av-wait > img, .av-wait > canvas, .av-wait > video { opacity: 0 !important; }
+.av-wait::before { content: ""; position: absolute; left: 50%; top: 50%; height: 26%; aspect-ratio: 1; z-index: 2; pointer-events: none;
+  background: url('./assets/icons/system/loading_icon.png') center / contain no-repeat; animation: xmbSpinC 0.9s linear infinite; }
+/* (avatars in the XMB's columns: Users, Friends; the same sizes as above) */
+.item-col .item .av-wait::before { height: 4.45vh; }
+.item-col .item.sel .av-wait::before, .item-col .item.item-anchor .av-wait::before { height: 7.2vh; }
+.item-col.has-flat .item .av-wait::after { height: 4.15vh; }
+.item-col.has-flat .item.sel .av-wait::after, .item-col.has-flat .item.item-anchor .av-wait::after { height: 7.75vh; }
+.item { position: absolute; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center;
+  transition: left 0.28s cubic-bezier(.34,1.08,.42,1), top 0.28s cubic-bezier(.34,1.08,.42,1), opacity 0.28s ease; cursor: pointer; }
+.item-sys { width: var(--item-icon, 7.7vh); height: var(--item-icon, 7.7vh); }
+/* a setting's current choice, on the right of its row (IMG_3605: small,
+   lined up in one column, a little under the title's middle) */
+.item-setval { position: absolute; left: calc(50% + 34.2vw); top: 50%; transform: translateY(-28%); font-size: 1.55vh; white-space: nowrap;
+  max-width: 28vw; overflow: hidden; text-overflow: ellipsis; opacity: 0.88; pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,0.45); }
+.item.sel .item-setval { opacity: 1; }
+/* (room above and below the letters inside its clipping box, so the tops of
+   the letters and their shadow aren't cut off; the text stays where it was) */
+.item-setval { padding: 0.6vh 0.2vw; margin: -0.6vh 0 0 -0.2vw; transform: translateY(calc(-28% + 0.336vh)); }
+body.gm-sub .item-setval, .item.gm-open .item-setval, .item.gm-band .item-setval { opacity: 0; }
+/* Every row's title lives INSIDE its item, so title and icon always move
+   together. The title line is centred on the icon; the selected row's
+   description lines flow downward under it (music: artist line above). */
+.item-label { position: absolute; left: 50%; top: 50%; margin-left: 6.04vw;
+  transform: translateY(calc(var(--title-lh, 3.6vh) * -0.5 + 0.33vh));
+  width: max-content; pointer-events: none; transition: opacity .35s ease; }
+.il-body { max-width: 49.5vw; }
+/* game and program titles (and PS Home's Modern icon): not chosen, on the
+   same line as every other item's title (photos, documents, songs...); chosen,
+   further out, beside the large icon (further still for an icon wide enough
+   to need it), moving out smoothly as the icon grows */
+.item-label.il-game { margin-left: 6.04vw; transition: opacity .35s ease, margin-left .24s ease; }
+.item.sel .item-label.il-game { margin-left: 10.21vw; }
+.item.sel.ar-item .item-label.il-game { margin-left: max(10.21vw, calc(4.66vw * var(--ar, 1.7778) + 1.55vw)); }
+/* media folders: Photo and Video folder titles are on the same line as the
+   other items' titles (the default); Music folders sit at the capture's x 677 */
+.item-label.il-fmusic { margin-left: 5.83vw; }
+.il-title { font-size: var(--label-size, 2.95vh); line-height: var(--title-lh, 3.6vh); white-space: nowrap; }
+.item.sel .il-title { font-size: var(--title-size, 2.94vh); font-weight: 600; animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.il-pre { display: none; position: absolute; left: 0; bottom: 100%; margin-bottom: -0.5vh;
+  font-size: 1.86vh; line-height: 1.3; white-space: nowrap; }
+.item.sel .il-pre { display: block; }
+.il-sub { font-size: 1.86vh; line-height: 1.32; margin-top: -0.37vh; white-space: nowrap; }
+.item.sel .il-body .il-sub { display: none; }
+/* the content-info rectangle replaces the labels while it's up (fade) */
+.item-col.panel-on .item-label { opacity: 0; }
+/* idle: after 4 s on one row, the OTHER rows' titles fade away (Photo / Music /
+   Video / Game / Network / PSN; never for the user's own content) */
+.item-col.labels-idle .item:not(.sel) .item-label { opacity: 0; transition: opacity .8s ease; }
+/* games: no name until you stay on one (it shows with the game's backdrop) */
+.item.item-game:not(.sel) .item-label { opacity: 0; transition: opacity .35s ease; }
+/* (programs in a custom section: their titles always show, like the section's other items) */
+.item.item-game.sec-game:not(.sel) .item-label { opacity: 1; }
+/* What's New / My Channels: once the backdrop is up, the icon's outline glows,
+   twice as fast as a selected title's glow */
+@keyframes iconOutlineGlow {
+  0%, 100% { filter: drop-shadow(0 0 0.2vh rgba(255,255,255,0.35)); }
+  50% { filter: drop-shadow(0 0 0.6vh rgba(255,255,255,0.95)) drop-shadow(0 0 1.2vh rgba(255,255,255,0.55)); }
+}
+.item.cinfo-glow .item-sys { animation: iconOutlineGlow 1.7s ease-in-out infinite; }
+/* the user's name under PS Vita / Saved Data Utility rows */
+.d-sub.il-usub { font-size: 1.86vh; line-height: 1.32; margin-top: -0.37vh; }
+.item.sel .il-body .il-sub.il-usub { display: block; }
+/* the signed-in user's diamond, left of their icon in Users */
+.user-diamond { position: absolute; left: 50%; top: 50%; width: 2.4vh; height: 2.4vh; margin-left: -5.1vw;
+  transform: translate(-50%, -50%); pointer-events: none; transition: margin-left .24s ease;
+  background: url('./assets/icons/system/diamond_indicator.png') left center/auto 100% no-repeat; }
+/* same size and the same gap to the icon's edge whether the user is selected
+   or not (like the PSN card's diamond); it slides with the icon as it grows */
+.item.sel .user-diamond { margin-left: -6.77vw; }
+.item.sel .item-sys { width: 16.64vh; height: 16.64vh; }               /* selected icon ≈ category icon size (matches XMB) */
+/* Slow breathing glow on the highlighted sub-item icon, like the real XMB:
+   the WHOLE icon brightens and blooms (not just the outline), fading in/out
+   gently. Applies to every selected icon: masked (.sysicon) and full-colour
+   (.coloricon) alike. */
+/* The selected item's TITLE word glows (like the real XMB): the icons do NOT
+   glow. A gentle pulsing white bloom on the text. */
+@keyframes xmbLabelGlow {
+  0%, 100% { text-shadow: 0 0 4px rgba(255,255,255,0.35); }
+  50% { text-shadow: 0 0 12px rgba(255,255,255,0.95), 0 0 22px rgba(255,255,255,0.5); }
+}
+/* The same glow as a filter, for labels that clip their text (ellipsis /
+   marquee): a text-shadow is cut off by the label's own box, which showed the
+   box as a faint rectangle; a filter is drawn after the clip, so it only
+   follows the letters. */
+@keyframes xmbLabelGlowF {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(255,255,255,0.35)); }
+  50% { filter: drop-shadow(0 0 6px rgba(255,255,255,0.95)) drop-shadow(0 0 11px rgba(255,255,255,0.5)); }
+}
+/* Card name glow: as strong as the other selected labels, but applied as a
+   filter: drop-shadow on the (unclipped) name row so the glow hugs the letters
+   instead of being clipped into a rectangle by the marquee's overflow box. A
+   constant dark drop-shadow underneath keeps it legible on the coloured card. */
+@keyframes xmbCardNameGlow {
+  0%, 100% { filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 4px rgba(255,255,255,0.35)); }
+  50% { filter: drop-shadow(0 2px 2px rgba(0,0,0,0.5)) drop-shadow(0 0 11px rgba(255,255,255,0.95)) drop-shadow(0 0 20px rgba(255,255,255,0.5)); }
+}
+/* the default (stock) avatars on PSN cards sit inside the avatar window with a wide margin */
+.item.item-card .fc-avslot .fc-av.fc-stock { width: 57.8%; height: 57.8%; margin: 21.1%; object-fit: contain; }
+.item-avatar { width: 4.45vh; height: 4.45vh; object-fit: cover; opacity: 1; border-radius: 0.5vh; transition: width .24s ease, height .24s ease; }
+.item.sel .item-avatar { width: 10.4vh; height: 10.4vh; border-radius: 1.1vh; }   /* 112 px @1080 (Users capture) */
+/* drilled-in anchor: the parent item that a sub-menu opened from, sitting to
+   the left with a back arrow (like the real XMB). */
+.item.item-anchor { pointer-events: none; }
+/* the anchor keeps the selected-size icon (Music > album capture) */
+.item.item-anchor { --item-icon: 16.64vh; }
+.item.item-anchor .item-avatar { width: 10.4vh; height: 10.4vh; }
+/* a user's own picture: the whole picture, no rounded-square crop */
+.item-avatar.item-photo { width: auto; max-width: 8vh; object-fit: contain; border-radius: 0; }
+.item.sel .item-avatar.item-photo, .item.item-anchor .item-avatar.item-photo { width: auto; max-width: 18.5vh; border-radius: 0; }
+.item.item-anchor .art-frame { width: 16.56vw; }
+.item.item-anchor .art-frame.photo-thumb { width: 13.3vh; }
+.item.item-anchor .art-frame.music-art { width: 17.96vh; }
+.item.item-anchor .folder-frame { width: 16vh; height: 16vh; }
+.item.item-anchor .folder-frame.folder-photo { width: 21.3vh; }
+.item.item-anchor .folder-frame.folder-video, .item.item-anchor .folder-frame.folder-game { width: 28.2vh; }   /* (a game folder in its own shape too: its picture stays inside it) */
+/* back arrow: x 425 (anchor at 303), 24 px */
+.item-anchor .drill-arrow { position: absolute; left: 50%; top: 50%; margin-left: 6.35vw; transform: translate(-50%, -50%);
+  width: auto; height: 2.2vh; opacity: 0.85; }
+/* the parent's other rows, barely visible beside the anchor (icons only) */
+.item.item-ghost { pointer-events: none; opacity: 0.22; transform: translate(-50%, -50%) scale(0.75); }
+
+/* game art container at 16:9 so 16:9 icons/gifs/preview videos fill it exactly
+   (no letterboxing, no cropping). object-fit: cover keeps any other ratio filling
+   the frame gracefully. */
+/* game icons: the PS3 ICON0 shape (320x176): 318 px selected, 144 px otherwise
+   (Game capture). A game with no artwork shows the plain translucent frame. */
+.art-frame { width: 7.5vw; aspect-ratio: 16 / 9; overflow: hidden; position: relative; transition: width 0.24s ease; }
+.item.sel .art-frame { width: 16.56vw; }
+/* a game icon that isn't 16:9 (a square one, say): the frame takes the
+   picture's own shape (--ar, between 1:1 and 16:9) at the same height, so it's
+   never stretched or cut; wider pictures stay in the 16:9 frame, whole */
+.art-frame.ar-fit { aspect-ratio: var(--ar); width: calc(4.21875vw * var(--ar)); }
+.item.sel .art-frame.ar-fit, .item.item-anchor .art-frame.ar-fit { width: calc(9.315vw * var(--ar)); }
+/* YouTube (TV/Video Services): the logo, a little bigger when chosen, the
+   title close beside it as in the console's capture */
+.art-frame.yt-art, .art-frame.yt-art.ar-fit { width: 7.3vw; aspect-ratio: 600 / 239; overflow: visible; }
+.item.sel .art-frame.yt-art, .item.sel .art-frame.yt-art.ar-fit, .item.item-anchor .art-frame.yt-art { width: 9vw; }
+.item-game .art-frame:not(:has(img)) { background: rgba(255,255,255,0.17); }
+/* video icons (Change Icon): 16:9 thumbnails, 140x80 in the list and 367x211
+   selected, centred on the column (Video capture); titles + the date line at
+   x 759 like the games' */
+.art-frame.vid-thumb { width: 7.29vw; aspect-ratio: 140 / 80; background: #000; }
+.item.sel .art-frame.vid-thumb { width: 19.11vw; aspect-ratio: 367 / 211; }
+.art-frame.vid-thumb .art-img, .art-frame.vid-thumb .preview-vid { object-fit: cover; }
+/* titles line up with the other rows; only the selected (large) thumbnail
+   pushes its own title out */
+.item.sel .item-label.il-video { margin-left: 10.21vw; }
+.il-vsub { font-size: 1.8vh; font-weight: 600; letter-spacing: 0.03em; opacity: 0.95; margin-top: -0.3vh; }
+/* photo thumbnails: square preview of the image (T8) */
+.art-frame.photo-thumb { width: 6.6vh; aspect-ratio: 1; border-radius: 0; }
+.item.sel .art-frame.photo-thumb { width: 13.3vh; }
+/* song covers: 82 px, 194 px when selected (Music > album capture) */
+.art-frame.photo-thumb.music-art { width: 7.6vh; }
+.item.sel .art-frame.photo-thumb.music-art { width: 17.96vh; }
+/* Photo previews show the whole image inside the square (letterboxed if needed),
+   with straight edges: never cropped to fill. */
+.art-frame.photo-thumb .art-img { object-fit: contain; }
+/* media grouping folder: the Folders.zip folder graphic (per section) with the
+   first item's thumbnail tucked into the pocket. Each folder keeps its own
+   aspect ratio (music 1:1, photo 1.33:1, video 1.76:1) so it isn't stretched. */
+/* folder sizes from the Photo / Music captures: the folder art is 130 px tall
+   selected and 70 px otherwise (the PNGs have ~25% padding) */
+.folder-frame { position: relative; height: 8.6vh; width: 8.6vh; transition: width .24s ease, height .24s ease; }
+.item.sel .folder-frame { height: 16vh; width: 16vh; }
+.folder-frame.folder-photo { width: 11.45vh; }
+.item.sel .folder-frame.folder-photo { width: 21.3vh; }
+.folder-frame.folder-video { width: 15.17vh; }
+.folder-frame.folder-game { width: 15.17vh; }
+.item.sel .folder-frame.folder-game { width: 28.2vh; }
+/* the disc game: the round disc in the middle of its frame */
+.art-frame .art-img.disc-img { object-fit: contain; padding: 4%; box-sizing: border-box; }
+.item.sel .folder-frame.folder-video { width: 28.2vh; }
+.folder-frame .ff-folder { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35)); }
+/* thumbnail sits behind the folder front, inside the pocket (uniform inset) */
+/* folder tinted to the Icon Color: the folder shape (via its own alpha as a
+   mask) filled with --icon-color, multiplied over the folder graphic so its
+   glass shading is kept. Sits over the folder but UNDER the inner photo. */
+.folder-frame .ff-tint { position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: var(--folder-tint, var(--icon-color, #fff)); mix-blend-mode: multiply;
+  -webkit-mask: var(--fimg) center/contain no-repeat; mask: var(--fimg) center/contain no-repeat; }
+.folder-frame .ff-thumb { position: absolute; left: 18%; top: 17%; width: 63%; height: 66%;
+  object-fit: contain; border-radius: 1px; z-index: 1; }
+/* (each picture fitted, whole, inside the inner square of its kind's folder
+   without a cover (icon_<kind>_album_default): music x 33-145, photo x 44-191,
+   video x 62-251, all y 37-144 of their pictures) */
+.folder-frame.folder-photo:not(.ff-bd) .ff-thumb { left: 18.6%; width: 62.4%; top: 20.8%; height: 60.7%; }
+.folder-frame.folder-music:not(.ff-bd) .ff-thumb { left: 18.5%; width: 63.5%; top: 20.8%; height: 60.7%; }
+/* video / game folders with a thumbnail (icon_gamedata): the whole thumbnail or
+   icon, in its own ratio (never stretched or cropped), centred on the
+   folder's body (x 60-253, y 30-148 of 314x178) */
+.folder-frame.ff-bd .ff-thumb { left: 21.7%; top: 21.3%; width: 56.4%; height: 57.3%; object-fit: contain; border-radius: 0; }
+.folder-frame.folder-video .ff-thumb, .folder-frame.folder-video.ff-bd .ff-thumb { left: 19.7%; width: 60.5%; top: 20.8%; height: 60.7%; object-fit: contain; border-radius: 0; }
+.art-img, .preview-vid { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.preview-vid { z-index: 2; }
+
+/* selected item detail (title + one-line subtitle). The title word glows. */
+.d-sub { font-size: var(--desc-size, 1.86vh); opacity: 0.82; margin-top: var(--desc-dy, -0.37vh); white-space: pre-line; max-width: 49.5vw; line-height: 1.32; }
+/* a setting's description: placed and sized exactly like any other item's (no gap under the title) */
+.d-desc { font-size: var(--desc-size, 1.86vh); opacity: 0.82; margin-top: var(--desc-dy, -0.37vh); white-space: pre-line; max-width: 49.5vw; line-height: 1.32; }
+/* Preload All Songs: spinning loader / done tick shown beside the title */
+.d-status { display: inline-flex; align-items: center; margin-left: 1.1vh; font-size: 2.4vh; opacity: 0.9; vertical-align: middle; }
+.d-spin { width: 3vh; height: 3vh; object-fit: contain; margin-right: 0.5vh; animation: xmbSpin 0.9s linear infinite; }
+.d-tick { width: 3vh; height: 3vh; object-fit: contain; }
+.d-sub.d-warn { color: #ffffff; opacity: 1; font-weight: 600; }
+.d-warn-text { font-size: 1.95vh; color: #ffd11a; opacity: 0.95; margin-top: 0.6vh; white-space: pre-line; max-width: 46vw; line-height: 1.3; font-weight: 600; text-shadow: 0 0.12vh 0.4vh rgba(0,0,0,0.5); }
+@keyframes xmbSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+/* ---------- marquee: slowly scroll titles too long to show fully ---------- */
+.mq-box.mq-run { overflow: hidden; }
+/* a scrolling list title keeps room for its glow inside the clip box */
+.il-title.mq-box.mq-run { padding: 1.2vh 0.35vw; margin: -1.2vh -0.35vw; box-sizing: content-box; }
+.mq-box > .mq-inner { display: inline-block; white-space: nowrap; max-width: none; }
+.mq-box > .mq-inner > .mq-a, .mq-box > .mq-inner > .mq-dup { display: inline-block; white-space: nowrap; }
+/* full laps are run by marquee.js (Web Animations: hold, then one text width + gap) */
+
+/* Content-information rectangle (What's New, PlayStation®Store, Sign Up,
+   Photo Gallery…), measured from the captures: a white 20% band from x 715 to
+   x 1720 whose ends fade out, 2 px lines (35%) along its top and bottom edges,
+   top at y 417; title at x 761 / y 472, body text 24 px on 34 px lines.
+   It simply fades in after the dwell. */
+.item-detail { position: absolute; pointer-events: none; opacity: 0; }
+.item-detail.d-panel { width: 52.34vw; padding: 2.7vh 1.9vw 2.96vh 2.4vw; box-sizing: border-box;
+  transition: opacity .45s ease; }
+.item-detail.d-panel.d-show { opacity: 1; }
+.item-detail.d-panel::before { content: ""; position: absolute; inset: 0; z-index: -1;
+  background: rgba(255,255,255,0.2);
+  border-top: 2px solid rgba(255,255,255,0.36); border-bottom: 2px solid rgba(255,255,255,0.36);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 8.5%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 8.5%, #000 88%, transparent 100%); }
+.dp-title { font-size: var(--dp-title, 3.88vh); line-height: 4.9vh; font-weight: 600; white-space: nowrap; position: relative; top: 0.5vh;
+  text-shadow: 0 0.18vh 0.5vh rgba(0,0,0,0.45); }
+.dp-body { font-size: var(--dp-body, 2.25vh); line-height: 3.15vh; margin-top: 4.26vh; white-space: pre-line;
+  text-shadow: 0 0.15vh 0.4vh rgba(0,0,0,0.45); }
+/* Photo Gallery's rectangle (its capture): title at x 736, text starts right
+   under the title, 26 px on 37 px lines, bottom edge at y 725 */
+.item-detail.dp-gallery { margin-left: -1.3vw; width: 54.5vw; }
+/* PlayStation®Home: the same rectangle as What's New / the Store, shorter
+   (its title and two lines, the text right under the title) */
+.item-detail.dp-home .dp-body { margin-top: 1.6vh; }
+/* PS Home (Original Version): its background picture has the console's own
+   rectangle in it (lines at y 416 and 619 @1080): ours sits exactly on it */
+.item-detail.d-panel.dp-home:not(.dp-plain) { height: 18.98vh; margin-top: -0.1vh; }
+/* PlayStation®Home, Modern Version: the description without its white box */
+.item-detail.dp-plain::before { display: none; }
+.item-detail.dp-gallery .dp-body { --dp-body: 2.4vh; line-height: 3.43vh; margin-top: 1.2vh; }
+
+/* ---------- in-app browser screen ---------- */
+/* The live page is a separate, OS-topmost LibreWolf window pinned by the Rust
+   side to the panel the real PS3 browser uses (1920x1080 capture: x 412-1505,
+   y 76-1002). This full-screen layer sits behind it: the XMB background only
+   (the cross and the clock box are hidden), blurred, with the PS3 browser's
+   two translucent grey bars at the top (y 0-75) and bottom (y 1005-1080). */
+body.browser-open #xmb, body.browser-open #infobox { visibility: hidden !important; }
+body.browser-open:not(.clock-loading) #infobox *, body.browser-open #infobox .ib-profile, body.browser-open #infobox .ib-profile * { visibility: hidden !important; }
+.browser { position: fixed; inset: 0; z-index: 56; display: none; color: #e6e6e6;
+  font-family: var(--ui-font);
+  backdrop-filter: blur(16px) saturate(1.05);
+  -webkit-backdrop-filter: blur(16px) saturate(1.05); }
+.browser.show { display: block; }
+/* the two bars: measured vertical profile of the reference (grey 48 at the
+   screen edge, ~70 through the middle, darkening toward the inner edge) with a
+   bright hairline + dark shadow on the edge facing the page */
+.br-bar { position: absolute; left: 0; right: 0; height: 6.94vh; pointer-events: none; }
+.br-bar-top { top: 0;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0) calc(100% - 0.37vh), rgba(255,255,255,0.41) calc(100% - 0.37vh),
+      rgba(255,255,255,0.41) calc(100% - 0.19vh), rgba(0,0,0,0.5) calc(100% - 0.19vh)),
+    linear-gradient(180deg, rgba(255,255,255,0.19) 0%, rgba(255,255,255,0.235) 6%, rgba(255,255,255,0.255) 24%,
+      rgba(255,255,255,0.275) 40%, rgba(255,255,255,0.275) 66%, rgba(255,255,255,0.245) 82%,
+      rgba(255,255,255,0.195) 91%, rgba(255,255,255,0.125) 96%); }
+.br-bar-top::after { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 0.28vh;
+  background: linear-gradient(180deg, rgba(0,0,0,0.45), rgba(0,0,0,0)); }
+.br-bar-bot { bottom: 0;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0.5) 0, rgba(0,0,0,0.5) 0.19vh, rgba(255,255,255,0.38) 0.19vh,
+      rgba(255,255,255,0.38) 0.37vh, rgba(0,0,0,0) 0.37vh),
+    linear-gradient(180deg, rgba(255,255,255,0.165) 4%, rgba(255,255,255,0.22) 13%, rgba(255,255,255,0.26) 24%,
+      rgba(255,255,255,0.275) 34%, rgba(255,255,255,0.275) 55%, rgba(255,255,255,0.26) 72%,
+      rgba(255,255,255,0.245) 88%, rgba(255,255,255,0.22) 100%); }
+.br-bar-bot::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 0.28vh;
+  background: linear-gradient(0deg, rgba(0,0,0,0.45), rgba(0,0,0,0)); }
+/* top bar: www icon, page title, address (as on the PS3: "Sony USA  http://…") */
+.br-top { position: absolute; top: 5.1vh; left: 3.07vw; right: 3vw; transform: translateY(-50%);
+  display: flex; align-items: center; gap: 0; font-size: 1.98vh; line-height: 1.3; white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.br-www { width: 4.65vh; height: 4.65vh; flex: 0 0 auto; margin: 0 0.47vw 0 -1.1vh; background: rgba(225,225,225,0.9);
+  -webkit-mask: url('./assets/icons/theme/icon_browser.png') center/contain no-repeat;
+  mask: url('./assets/icons/theme/icon_browser.png') center/contain no-repeat; }
+.br-name { flex: 0 1 auto; max-width: 38%; min-width: 0; overflow: hidden; margin-right: 1.51vw; font-size: 1.75vh; }
+.br-name:empty { margin-right: 0; }
+.br-url { flex: 1 1 auto; min-width: 0; overflow: hidden; opacity: 0.92; font-size: 1.76vh; }
+/* bottom bar: the hovered link's address */
+.br-status { position: absolute; left: 3.7vw; right: 3vw; top: calc(100% - 6.94vh + 0.33vh); font-size: 1.85vh;
+  line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.92;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+/* a one-off notice (e.g. the helper isn't active yet), centered on the page area */
+.br-note { position: absolute; left: 24vw; right: 24vw; top: 50%; transform: translateY(-50%);
+  text-align: center; font-size: 2.2vh; line-height: 1.45; display: none; text-shadow: 0 1px 4px rgba(0,0,0,0.85); }
+.br-note.on { display: block; }
+/* while LibreWolf starts / downloads / updates: the same spinning loader the
+   app shows after signing in */
+.br-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  opacity: 0; transition: opacity .25s ease; pointer-events: none; }
+.br-center.on { opacity: 1; }
+.br-center .loading-spin { display: block; }
+
+/* ---------- boot intro: fade from black, then PS3 wordmark (Screenshot_19) ---------- */
+.intro { position: fixed; inset: 0; z-index: 90; pointer-events: none; transition: opacity 0.7s ease; }
+.intro.gone { opacity: 0; }
+/* black layer that fades out to reveal the live background (waves + dots) */
+.intro-black { position: absolute; inset: 0; background: #000; opacity: 1; transition: opacity 1.3s ease; }
+.intro-black.fade { opacity: 0; }
+/* the PlayStation mark, "PS3" and "PlayStation 3", placed as on the console
+   (measured on a 1080p capture: the mark at x 1143-1262 / y 490-581, "PS3" at
+   x 1365-1764 / y 488-572, "PlayStation 3" at x 1483-1624 / y 609-633). Sizes
+   in screen heights, across from the middle of the screen, so the logo keeps
+   its shape on any screen. Each part's opacity is set frame by frame (intro.js). */
+.intro-logo { position: absolute; inset: 0; }
+.intro-logo > img { position: absolute; display: block; opacity: 0; }
+.il-mark { left: calc(50vw + 16.94vh); top: 45.37vh; height: 8.426vh; width: auto; filter: brightness(0.92); }
+/* (ps3_logo.png: "PS3" on its top 64 rows, "PlayStation 3" on rows 89-108 of 110;
+   the subtitle is a little smaller on the console, so it's shown on its own) */
+.il-word { left: calc(50vw + 34.94vh); top: 45.06vh; height: 13.37vh; width: auto; clip-path: inset(0 0 30% 0);
+  -webkit-mask-image: linear-gradient(#0000, #0000); mask-image: linear-gradient(#0000, #0000); }
+.intro-logo > .il-sub { left: calc(50vw + 37.16vh); top: 47.02vh; height: 11.58vh; width: auto; clip-path: inset(72% 0 0 0); }
+/* your own pictures (Intro Icon / Intro Title): in the same places, never
+   past the right of the screen */
+.intro-logo > .il-word { opacity: 1; }
+.il-mark.own { filter: none; max-width: 9vw; object-fit: contain; }
+.intro-logo > .il-word.own { clip-path: none; opacity: 0; -webkit-mask-image: none; mask-image: none; max-width: calc(50vw - 34.94vh - 4vw); object-fit: contain; object-position: left center; }
+/* (the background layers' brightness is set frame by frame too; behind them, black) */
+html:has(body.intro-run), body.intro-run { background: #000; }
+/* the first menu is made during the black screen, and shows once the intro is over */
+body.intro-hold #xmb { opacity: 0 !important; pointer-events: none !important; }
+
+/* ---------- right-side menus / info (flat, transparent, straight) ---------- */
+.sidemenu { position: fixed; top: 0; right: 0; height: 100%; width: 30vw; min-width: 300px; z-index: 60;
+  display: none; flex-direction: column; justify-content: center; gap: 2px; padding: 0 40px 0 34px;
+  /* a bright shining edge on the LEFT, then the dark shading panel fading in
+     toward the right (the shadow): like the real XMB options menu. */
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.55) 0.9%, rgba(255,255,255,0.18) 3%, rgba(255,255,255,0) 8%),
+    linear-gradient(90deg, rgba(var(--menu-rgb, 8,10,16),0) 0%, rgba(var(--menu-rgb, 8,10,16),0.42) 26%, rgba(var(--menu-rgb, 8,10,16),0.74) 62%, rgba(var(--menu-rgb, 8,10,16),0.9) 100%); }
+.sidemenu.show { display: flex; }
+/* the small line near the top, separating the header from the options */
+.sidemenu.show::before { content: ""; position: absolute; top: 78px; left: 34px; right: 40px; height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.05), rgba(255,255,255,0.55)); }
+/* selected option glows like the icons (same slow breathing bloom) */
+.sidemenu.info { justify-content: center; }
+.gi-title { font-size: 30px; font-weight: 600; margin-bottom: 14px; }
+.gi-desc { font-size: 16px; line-height: 1.5; opacity: 0.85; margin-bottom: 18px; }
+.gi-dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; font-size: 16px; }
+.gi-dl dt { opacity: 0.6; }
+
+/* ---------- minimal field entry (flat): clean, blurred wave behind only ---------- */
+.form { position: fixed; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center;
+  background: rgba(10,12,20,0.18); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.form.show { display: flex; }
+/* header + footer white rules, matching the real XMB full-screen menus
+   (measured at ~18.5vh and ~81.5vh on a 1920x1080 sign-in screen). */
+.form.show::before, .form.show::after {
+  content: ""; position: fixed; left: 0; right: 0; height: 1.5px;
+  background: rgba(255,255,255,0.85); z-index: 71; pointer-events: none;
+}
+.form.show::before { top: 18.5vh; }
+.form.show::after { top: 81.5vh; }
+/* post-login loading screen: same backdrop + top/bottom rules as the Turn Off
+   System menu, but with only those two lines and a big spinning loading icon
+   in the middle. Shown only while the signed-in profile is still loading. */
+.loading { position: fixed; inset: 0; z-index: 69; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 3vh;
+  background: rgba(10,12,20,0.18); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.loading.show { display: flex; }
+.loading::before, .loading::after {
+  content: ""; position: fixed; left: 0; right: 0; height: 1.5px;
+  background: rgba(255,255,255,0.85); z-index: 71; pointer-events: none;
+}
+.loading::before { top: 18.5vh; }
+.loading::after { top: 81.5vh; }
+.loading-spin { width: 10vh; height: 10vh; object-fit: contain;
+  filter: drop-shadow(0 0.2vh 0.6vh rgba(0,0,0,0.5)); animation: xmbSpin 0.9s linear infinite; }
+/* The avatar selector / photo grid draw their own panel: no header/footer rules. */
+.form.avpick::before, .form.avpick::after { display: none; }
+/* Keep field forms (e.g. PSN Sign Up) inside the two rules so nothing is clipped. */
+.form-inner { max-height: 60vh; overflow-y: auto; overflow-x: hidden; }
+/* Turn-off style confirm: centred title, horizontal options (selected glows),
+   and an X Enter / O Back footer at the bottom. */
+.confirm { text-align: center; }
+.confirm-title { font-size: 2.13vh; font-weight: 400; line-height: 3vh; margin-bottom: 4.1vh; white-space: pre-line; text-shadow: 0 1px 8px rgba(0,0,0,0.5); }
+.confirm-opts { display: flex; justify-content: center; gap: 6.25vw; }
+.confirm-opt { font-family: var(--ui-font); font-size: 2.3vh; line-height: 3vh; color: var(--text); background: none; border: none;
+  cursor: pointer; opacity: 0.75; padding: 0; transition: opacity .2s ease; }
+.confirm-opt.sel { opacity: 1; animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+/* Turn Off capture: plain ✕ / ○ glyphs just under the lower rule (y 907),
+   the two hints 340 px apart */
+.confirm-foot { position: fixed; left: 0; right: 0; top: 82.9vh; display: flex; justify-content: center; gap: 16.6vw; padding-left: 2.3vw; z-index: 72; }
+.cf-hint { display: inline-flex; align-items: center; gap: 0.75vw; font-size: 2.25vh; color: var(--text);
+  text-shadow: 0 0.15vh 0.4vh rgba(0,0,0,0.5); }
+.cf-glyph { display: inline-flex; align-items: center; justify-content: center; font-size: 2.6vh; line-height: 1; }
+.form-inner { width: min(620px, 88vw); }
+.form-title { font-size: 26px; font-weight: 600; margin-bottom: 22px; }
+.form-actions { display: flex; gap: 16px; margin-top: 8px; }
+.form-actions button { font-family: var(--ui-font); font-size: 19px; padding: 8px 26px; color: var(--text);
+  background: rgba(255,255,255,0.10); border: none; cursor: pointer; }
+.form-actions .form-ok { background: rgba(255,255,255,0.2); }
+.form-actions .form-alt { background: rgba(120,170,255,0.22); }
+/* ---- Avatar selection, laid out from the PSN "Avatar" capture (1920x1080):
+   title at x 350 / y 102; slate panel x 352-1568, y 134-845; current avatar
+   144 px at x 384 / y 163, arrow at x 575, "Select an avatar." (cyan) at x 815,
+   an "All" drop-down x 818-1538 / y 240-285; light-cyan rules at y 323 and
+   y 755; 143 px cells on a 186 px pitch from x 424 / y 375 (2 rows, scroll
+   rail on the left at x 375); Cancel (bright blue) / Confirm buttons 219x44 at
+   y 781; a faint reflection under the panel and a ○ Back / ✕ Enter footer. */
+.form.avpick { background: rgba(0,6,14,0.22); display: none; }
+.form.avpick.show { display: block; }
+.avpick-title { position: absolute; left: 18.2vw; top: 7.6vh; font-size: 3.3vh; line-height: 4vh;
+  color: #f2f2f2; text-shadow: 0 0.25vh 0.6vh rgba(0,0,0,0.6); }
+/* panel (avatar capture 742ae15c): a dark, see-through near-black slab with
+   blue glows in its top-left and bottom-right corners, a thin cool-grey edge */
+.avpick-panel { position: absolute; left: 18.33vw; top: 12.4vh; width: 63.33vw; height: 65.83vh; box-sizing: border-box;
+  border-radius: 0.6vh; border: 1px solid rgba(140,170,200,0.45);
+  background:
+    radial-gradient(ellipse 34% 30% at 0% 0%, rgba(40,95,160,0.62) 0%, rgba(30,70,125,0.28) 55%, rgba(20,40,80,0) 100%),
+    radial-gradient(ellipse 34% 32% at 100% 100%, rgba(20,80,150,0.55) 0%, rgba(15,55,105,0.25) 55%, rgba(10,30,60,0) 100%),
+    rgba(2,4,8,0.72);
+  box-shadow: 0 0.6vh 2.4vh rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08); }
+.avpick-head { position: absolute; left: 0; right: 0; top: 0; height: 17.4vh; }
+.avpick-current { position: absolute; left: 1.67vw; top: 2.68vh; width: 13.33vh; height: 13.33vh; overflow: hidden; }
+.avpick-current img, .avpick-current video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avpick-arrow { position: absolute; left: 10.9vw; top: 8.6vh; height: 2.6vh; width: auto; object-fit: contain; opacity: 0.85; }
+.avpick-preview { position: absolute; left: 13.3vw; top: 2.68vh; width: 13.33vh; height: 13.33vh; overflow: hidden; }
+.avpick-preview img, .avpick-preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avpick-hint { position: absolute; left: 24.1vw; top: 4.8vh; color: #67cef1; font-size: 3.15vh; line-height: 4vh; }
+.avpick-dd { position: absolute; left: 24.27vw; top: 9.8vh; width: 37.5vw; height: 4.17vh; box-sizing: border-box;
+  border: 2px solid rgba(200,206,212,0.9); border-radius: 0.6vh; background: rgba(0,0,0,0.25);
+  display: flex; align-items: center; padding: 0 0.4vw; font-size: 2.9vh; color: #f4f4f4; }
+.avpick-dd-chev { position: absolute; right: 0.9vw; top: 50%; width: 2.5vh; height: 2.5vh; transform: translateY(-50%);
+  border-radius: 50%; background: #f4f6f8; }
+.avpick-dd-chev::after { content: ""; position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%);
+  border-left: 0.55vh solid transparent; border-right: 0.55vh solid transparent; border-top: 0.8vh solid #2030a0; }
+.avpick-rule { position: absolute; left: 1.04vw; right: 1.04vw; height: 2px; background: rgba(120,175,215,0.85); }
+.avpick-rule.r1 { top: 17.4vh; }
+.avpick-rule.r2 { top: 57.5vh; }
+/* the scroll viewport: exactly 2 rows; scrollbar forced to the LEFT via rtl */
+.avpick-scroll { position: absolute; left: 1.09vw; top: 19.1vh; width: 59.5vw; height: 37.5vh; direction: rtl;
+  overflow-y: auto; overflow-x: hidden; }
+.avpick-grid { direction: ltr; display: grid; grid-template-columns: repeat(6, 13.24vh); column-gap: 2.24vw; row-gap: 3.98vh;
+  padding: 3.2vh 0 3.2vh 2.55vw; }
+.avpick-cell { position: relative; width: 13.24vh; height: 13.24vh; cursor: pointer; box-sizing: border-box;
+  transition: transform .12s ease; }
+.avpick-av { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 1; }
+.avpick-cell.sel::after { content: ""; position: absolute; inset: -0.8vh; border: 0.3vh solid rgba(255,255,255,0.42); border-radius: 0.9vh;
+  pointer-events: none; animation: xmbPickGlow 3.4s ease-in-out infinite; }
+/* the square breathes like the selected subsection titles do */
+/* (both keyframes use the same shadow list so the browser blends between
+   them smoothly: dim flat grey square <-> bright white square with a soft glow) */
+@keyframes xmbPickGlow {
+  0%, 100% { border-color: rgba(255,255,255,0.42);
+             box-shadow: 0 0 0 rgba(255,255,255,0), 0 0 0 rgba(255,255,255,0), inset 0 0 0 rgba(255,255,255,0); }
+  50% { border-color: rgba(255,255,255,1);
+             box-shadow: 0 0 0.6vh rgba(255,255,255,0.55), 0 0 1.2vh rgba(255,255,255,0.22), inset 0 0 0.6vh rgba(255,255,255,0.35); }
+}
+.avpick-scroll::-webkit-scrollbar { width: 0.36vw; }
+.avpick-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.08); }
+.avpick-scroll::-webkit-scrollbar-thumb { background: rgba(170,175,180,0.9); }
+.avpick-actions { position: absolute; left: 0; right: 0; top: 60.6vh; display: flex; gap: 1.72vw; justify-content: center; }
+.avpick-actions button { font-family: var(--ui-font); font-size: 2.55vh; width: 11.4vw; height: 4.07vh; padding: 0; color: #ffffff;
+  border: none; cursor: pointer; border-radius: 0.35vh; background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); }
+.avpick-actions .form-ok.disabled { background: linear-gradient(180deg, #154a6e, #11405f); color: rgba(120,160,190,0.9); cursor: default; }
+.avpick-actions .form-alt.act-focus { background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); color: #fff; }
+/* Change Photo / Avatars: the same blue as Cancel */
+.avpick-actions .form-alt { background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); color: #fff; }
+/* lower band with the control hints */
+.avpick-foot { position: absolute; left: 0; right: 0; top: 84.3vh; bottom: 0;
+  background: linear-gradient(180deg, rgba(14,10,30,0.82) 0%, rgba(8,4,16,0.72) 45%, rgba(10,2,4,0.6) 100%);
+  border-top: 1px solid rgba(120,110,170,0.35); }
+.avpick-foot .af-row { position: absolute; left: 18.4vw; top: 1.1vh; display: flex; align-items: center; gap: 4.6vw; font-size: 2.6vh; color: #fff;
+  text-shadow: 0 0.15vh 0.4vh rgba(0,0,0,0.5); }
+.avpick-foot .af-g { margin-right: 0.9vw; font-size: 3.3vh; font-weight: 600; vertical-align: -0.2vh; }
+/* SELECT badge + the small links line under Back / Enter (capture: badge
+   x 18.2-23.7 %, centre y 91.4 %; text from x 24.25 %) */
+.avpick-foot .af-sel { position: absolute; left: 18.2vw; top: 5.75vh; height: 2.75vh; display: flex; align-items: center;
+  gap: 0.55vw; font-size: 2.05vh; color: #fff; text-shadow: 0 0.15vh 0.4vh rgba(0,0,0,0.5); white-space: nowrap; }
+.avpick-foot .af-selimg { height: 2.9vh; width: auto; display: block; }
+/* Photo Gallery grid: same panel, no header (the grid uses the full height) */
+.form.photogrid .avpick-scroll { top: 1vh; height: 55.6vh; }
+/* Photo Gallery / Choose an Image (pictures, backgrounds, overlays...): each
+   picture whole, in its own ratio inside its square, like inside a photo
+   folder (avatars stay square) */
+.form.photogrid .avpick-av, .form.avimages .avpick-av,
+.form.avimages .avpick-current img, .form.avimages .avpick-current video,
+.form.avimages .avpick-preview img, .form.avimages .avpick-preview video { object-fit: contain; }
+/* controller focus highlight for action buttons (avatar/photo Cancel/Confirm,
+   the keyboard Send) so they can be hovered and pressed with a controller. */
+.act-focus { outline: 0.28vh solid rgba(255,255,255,0.95); outline-offset: 0.25vh;
+  box-shadow: 0 0 1.3vh rgba(255,255,255,0.55); filter: brightness(1.18); }
+
+/* full-screen list picker (background music, playlist building): laid out
+   like the Sign-In screen (see .uisheet) */
+.lp-list { width: 43.39vw; max-height: 47vh; overflow-y: auto; position: relative; flex: 0 1 auto;
+  padding: 1.4vh 1.2vw; margin: -1.4vh 0; box-sizing: content-box; }   /* (room for the glow: nothing cut off) */
+.lp-space { position: relative; }
+/* (rows are 48 px: ListPicker places them itself, only those near the view) */
+.lp-item { position: absolute; left: 0; right: 0; height: 48px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 0.8vw; padding: 0 0.8vw; font-size: 2.12vh; color: rgba(238,241,244,0.72); cursor: pointer;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); border: 2px solid transparent; border-radius: 0.3vh; }
+.lp-item.sel { color: #fff; border-color: rgba(255,255,255,0.92); animation: tfxFill 3.4s ease-in-out infinite; }
+.lp-item.sel .lp-label { animation: xmbLabelGlowF 3.4s ease-in-out infinite; }
+.lp-check { width: 4.98vh; height: 4vh; flex: none; margin: 0 -0.8vh 0 -1.2vh; }
+.lp-label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-sub { font-size: 1.7vh; opacity: 0.75; white-space: nowrap; }
+
+/* ---------- photo / video viewer: media fullscreen, controls lower-left ---------- */
+.mediaview { position: fixed; inset: 0; z-index: 80; display: none; background: #000; }
+.mediaview.show { display: block; }
+/* photo viewer direction glyph: hidden by default, flashes near the bottom-left
+   on L1 / R1, then fades (T12). */
+/* the control image inside the glyph must fit the box (matches the Music
+   Player triangle-menu icon size): otherwise it renders at full natural size */
+.mv-name { font-size: 22px; opacity: 0.92; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- music player: song info + controls, lower-left (clean wave behind) ---------- */
+.musicplayer { position: fixed; inset: 0; z-index: 75; display: none; }
+.musicplayer.show { display: block; }
+
+/* ---------- music player v2 (icon cluster + green progress) ---------- */
+.mp2 { position: absolute; inset: 0; }
+/* icon control cluster: toggled with TRIANGLE. The whole block sits on the
+   LEFT (like the reference), but the rows and subtitle stay centred relative to
+   each other (widest row centres the shorter ones). */
+.mp2-cluster { position: absolute; left: 27.3vw; top: 34.8vh; transform: translateX(-50%); width: max-content;
+  display: none; text-align: center; }
+.mp2-cluster.on { display: block; }
+/* Music player capture: 46 px icons on a ~64-70 px pitch, rows 65 px apart,
+   centred on x 524; the focused icon is drawn ~1.25x */
+.mp2-crow { display: flex; align-items: center; justify-content: center; gap: 0; height: 6.7vh; margin-bottom: -0.65vh; }
+.mp2-btn { width: 6.85vh; height: 6.85vh; margin: 0 -0.26vw; background: none; border: none; padding: 0; cursor: pointer;
+  opacity: 0.85; transition: opacity .12s ease, transform .12s ease; }
+/* the icons carry their own southeast shadow (drawn into the textures) and
+   are shown at their native size: 46 px glyphs on a 64 px pitch (captures) */
+.mp2-btn .mpi { width: 100%; height: 100%; object-fit: contain; display: block; }
+.mp2-btn.sel { opacity: 1; transform: scale(1.3); }
+/* the repeat / shuffle row: the wide icons, repeat and SHUF ~95 px apart */
+.mp2-crow:nth-child(3) .mp2-btn { width: auto; height: 6.85vh; margin: 0 -0.18vw; }
+.mp2-crow:nth-child(3) .mp2-btn .mpi { width: auto; height: 100%; }
+.mp2-sub { margin-top: 2.5vh; font-size: var(--mp-sub, 2.2vh); display: flex; align-items: center; justify-content: center;
+  gap: 0.5vw; min-height: 3vh; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.mp2-hintimg { height: 2.7vh; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+/* volume mini-window (opens from the Volume Control icon) */
+.mp2-vol { display: none; margin: 1.6vh auto 0; width: max-content;
+  background: rgba(14,14,14,0.9); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 0.55vh; padding: 0.7vh 0.75vw 0.9vh; text-shadow: none; }
+.mp2-vol.on { display: block; }
+/* Volume Control (capture): "Normal" over nine beans between "-" and "+";
+   lit beans up to the level, the current one with the pulsing focus outline */
+.mp2-vlabel { font-size: 2.3vh; text-align: center; margin-bottom: 0.2vh; color: #f2f2f2; }
+.mp2-vrow { display: flex; align-items: center; gap: 0.3vw; color: #f0f0f0; font-size: 2.2vh; line-height: 1; }
+.mp2-vminus, .mp2-vplus { width: 0.9vw; text-align: center; }
+.vbs { display: flex; gap: 0.32vw; }
+.vb { position: relative; display: block; width: 1.85vh; height: 3.7vh; }
+.vb img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.vb .vb-focus { animation: vbPulse 1.6s ease-in-out infinite; }
+@keyframes vbPulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+/* bottom block, placed from the capture (1920x1080): status icons at y 832-861,
+   cover x 123-211 / y 897-978, title x 245 (centre y 921), artist line y 966;
+   track counter right-aligned to x 1803 at y 845, time at y 925, codec badge,
+   and the progress bar x 1418-1803 / y 963-975 */
+.mp2-bottom { position: absolute; inset: 0; pointer-events: none; }
+.mp2-info { position: absolute; left: 6.4vw; top: 83.06vh; display: flex; align-items: center; gap: 0; max-width: 70vw;
+  transition: opacity .6s ease; }
+.mp2-info.idle { opacity: 0; }
+.mp2-art { width: 8.2vh; height: 8.2vh; flex: 0 0 auto; margin-right: 1.65vw;
+  overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.mp2-cover { width: 100%; height: 100%; object-fit: contain; }
+.mp2-art .sysicon { width: 7.6vh; height: 7.6vh; background: var(--icon-color); opacity: 0.85;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: contain; mask-size: contain; }
+.mp2-meta { display: flex; flex-direction: column; }
+.mp2-title { font-size: var(--mp-title, 3.15vh); line-height: 4vh; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp2-artist { font-size: var(--mp-artist, 2.35vh); line-height: 3vh; margin-top: 0.45vh; white-space: nowrap; }
+/* status indicators (play / repeat / shuffle), shown with SELECT */
+.mp2-status { position: absolute; left: 6.95vw; top: 76.1vh; height: 4.4vh; display: none; align-items: center; gap: 3vw;
+  transition: opacity 0.5s ease; }
+.mp2-status.on { display: flex; }
+.mp2-status.faded { opacity: 0; }
+.mp2-st { height: 4.4vh; width: auto; object-fit: contain; }
+.mp2-st-rep { display: inline-flex; align-items: center; gap: 6px; }
+/* the "1" that sits right of the repeat icon in repeat-one mode: the glyph is
+   the left ~1/3 of its image, so crop the box to show just the "1". */
+.mp2-st-rep1 { width: auto; margin-left: -1.3vh; }
+/* track counter + time + progress bar: toggled with SELECT */
+.mp2-display { position: absolute; right: 6.09vw; top: 76.67vh; width: 20.1vw; text-align: right; display: none; }
+.mp2-display.on { display: block; }
+.mp2-count { font-size: var(--mp-count, 2.2vh); line-height: 3vh; margin-top: 0.4vh; }
+.mp2-tline { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4.4vh; height: 3vh; }
+.mp2-time { font-size: var(--mp-time, 2.2vh); white-space: nowrap; }
+.mp2-type { display: inline-flex; align-items: center; }
+.mp2-typeimg { height: 2.5vh; width: auto; object-fit: contain; }
+.mp2-codec { border: 1px solid rgba(255,255,255,0.5); border-radius: 3px; padding: 0 6px; font-size: 1.4vh; }
+/* progress bar (Music capture): a 12 px pill with a light 1 px rim and a
+   see-through grey track that brightens along its top and bottom edges; the
+   fill is a glossy lime bar (bright top highlight, olive core, bright bottom
+   reflection) with a straight leading edge. */
+.mp2-bar { position: relative; width: 100%; height: 1.11vh; margin-top: 2vh; overflow: hidden; border-radius: 999px;
+  border: 1px solid rgba(205,205,205,0.6);
+  background: linear-gradient(180deg, rgba(255,255,255,0.52) 0%, rgba(255,255,255,0.2) 16%, rgba(255,255,255,0.18) 32%,
+    rgba(255,255,255,0.27) 52%, rgba(255,255,255,0.3) 68%, rgba(255,255,255,0.38) 80%, rgba(255,255,255,0.58) 90%, rgba(255,255,255,0.5) 100%); }
+.mp2-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  border-radius: 999px 0 0 999px; transition: width .2s linear;
+  background: linear-gradient(180deg, #607611 0%, #fbff6f 11%, #c0de15 24%, #8cae04 37%, #80a20b 50%,
+    #5f8800 62%, #95b12f 74%, #dde487 87%, #6f7e27 100%);
+  box-shadow: inset -1px 0 0 #a6c032; }
+.mp2-bargloss { display: none; }
+
+/* video subtitle chooser */
+
+/* ---------- fade-to-black held while a launched game starts ---------- */
+.fadeblack { position: fixed; inset: 0; z-index: 200; background: #000; opacity: 0;
+  pointer-events: none; transition: opacity 0.6s ease; }
+/* starting a game: the whole screen dissolves into black (everything keeps
+   moving underneath while it does), then the game starts */
+.fadeblack.show { opacity: 1; pointer-events: auto; transition: opacity 0.9s cubic-bezier(.4,0,.2,1); }
+/* screen brightness dimmer: a black veil whose opacity rises as brightness
+   drops. Sits above the UI but below the game-launch fade, and never blocks
+   input. */
+.dim { position: fixed; inset: 0; z-index: 190; background: #000; opacity: 0;
+  pointer-events: none; transition: opacity 0.12s linear; }
+
+/* ---------- PSN profile card (Friends section) ---------- */
+.pc-wrap { display: flex; flex-direction: column; align-items: center; gap: 30px; }
+/* the card preview inside the editor: neutralise the list-item transforms and
+   give it room for the bubble (above) and the diamond (left) */
+.pc-preview.item.item-card { position: relative; transform: none; margin: 30px 0 0 46px; }
+.pc-preview .fc-root { transform: scale(1.2); transform-origin: center; }
+.pc-hint { font-size: 17px; opacity: 0.7; }
+
+/* ---------- on-screen keyboard (controller text entry) ---------- */
+/* ---- PS3-style on-screen keyboard (built from scratch) ---- */
+/* ---------- on-screen keyboard (Playstation-3-Keyboard capture) ----------
+   Its own layer over whatever is on screen (lightly darkened), always in the
+   middle. --u = one pixel of the 932-px-wide capture. */
+#osk-layer { position: fixed; inset: 0; z-index: 98; display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.42); --u: min(calc(59vw / 932), calc(88vh / 537)); }
+#osk-layer.show { display: flex; }
+.osk { position: relative; width: calc(var(--u) * 932); border-radius: calc(var(--u) * 6); overflow: hidden;
+  font-family: var(--ui-font); filter: drop-shadow(0 0 calc(var(--u) * 12) rgba(0,0,0,0.55)); user-select: none; }
+.osk-bar { height: calc(var(--u) * 46); display: flex; align-items: center; gap: calc(var(--u) * 6); padding-left: calc(var(--u) * 9);
+  background: linear-gradient(180deg, #9fa3a5 0%, #92969a 6%, #909596 50%, #8e9294 100%); }
+.osk-pen { height: calc(var(--u) * 32); width: auto; margin-left: calc(var(--u) * -1); }
+/* (a soft shadow under the title, as in the capture) */
+.osk-title { font-size: calc(var(--u) * 23.5); color: #fff; text-shadow: calc(var(--u) * 1) calc(var(--u) * 2) calc(var(--u) * 4) rgba(0,0,0,0.5); }
+.osk-screen { height: calc(var(--u) * 97); box-sizing: border-box; padding: calc(var(--u) * 2.5) calc(var(--u) * 14) calc(var(--u) * 8) calc(var(--u) * 17.5); overflow: hidden;
+  background: linear-gradient(180deg, #50524f 0%, #464646 25%, #3a3a3a 50%, #2e2e2e 75%, #232323 100%);
+  font-size: calc(var(--u) * 20); line-height: calc(var(--u) * 28); color: #fff; white-space: pre-wrap; word-break: break-all; }
+/* the caret (Playstation-3-Keyboard.png, to the pixel at 932 px wide): a
+   green I-beam 32 tall — 2 px serifs 6 wide at the top and bottom, a 2 px
+   light-green stem with a 1 px dark-green edge on each side (and a dark-green
+   shade under / over the serifs) — centred on the point between two letters
+   and taking no room, so the letters never move. It blinks on and off (no
+   fade). The white outlined ◁ (13 x 19) always sits at the end of the text,
+   3.5 px after it (2 px after the I-beam when the caret is at the end). */
+.osk-caret, .osk-end { display: inline-block; position: relative; width: 0; height: calc(var(--u) * 28); vertical-align: top; }
+.osk-caret::before { content: ""; position: absolute; left: calc(var(--u) * -3); top: calc(50% - var(--u) * 16);
+  width: calc(var(--u) * 6); height: calc(var(--u) * 32);
+  background:
+    linear-gradient(90deg, #b7dc82, #c4ef80 40%, #b8dc94) 0 0 / 100% calc(var(--u) * 2) no-repeat,
+    linear-gradient(90deg, #c3ee6a, #b2ff2e 40%, #c0e86a) 0 100% / 100% calc(var(--u) * 2) no-repeat,
+    linear-gradient(90deg, #b4fc66, #aff36e) calc(var(--u) * 2) 0 / calc(var(--u) * 2) 100% no-repeat,
+    linear-gradient(#2e6600, #2e6600) 0 calc(var(--u) * 2) / 100% calc(var(--u) * 1) no-repeat,
+    linear-gradient(#2a5400, #2a5400) 0 calc(100% - var(--u) * 2) / 100% calc(var(--u) * 1) no-repeat,
+    linear-gradient(90deg, #2f6b00 50%, #3c5c16 50%) calc(var(--u) * 1) 0 / calc(var(--u) * 4) 100% no-repeat;
+  animation: oskCaretBlink 1s steps(1, end) infinite; }
+@keyframes oskCaretBlink { 0% { visibility: visible; } 50% { visibility: hidden; } }
+.osk-end::after { content: ""; position: absolute; left: calc(var(--u) * 3.5); top: 50%; width: calc(var(--u) * 13); height: calc(var(--u) * 19);
+  transform: translateY(-50%);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 19'%3E%3Cpath d='M1.2 9.5 L12 1 L12 18 Z' fill='none' stroke='white' stroke-width='1.5' stroke-linejoin='miter'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
+.osk-strip { height: calc(var(--u) * 12); background: linear-gradient(180deg, #9a9a9a, #9e9e9e); }
+/* the keys' container darkens toward the bottom (capture: #9b9c9f at the top,
+   #96969a by the fourth row, #6c7278 / #5b6268 under the last one) */
+.osk-board { position: relative; height: calc(var(--u) * 322);
+  background: linear-gradient(180deg, #9b9c9f 0%, #9c9ba1 19%, #9b9b9e 46%, #96969a 61%, #8c8d90 66%, #888787 71%,
+    #7c7c78 81%, #737880 86%, #6c7278 91%, #5b636b 96%, #5f6267 100%); }
+/* the keys: the console's own key pictures (OSK Icons: BUTTON_BASE_*),
+   stretched to each key; white for the letters */
+.osk-k { position: absolute; box-sizing: border-box; cursor: pointer; pointer-events: auto;
+  left: calc(var(--u) * (var(--x) - 3)); top: calc(var(--u) * (var(--y) - 2)); width: calc(var(--u) * (var(--kw) + 6)); height: calc(var(--u) * 54); }
+/* (the console draws the key pictures partly see-through over the grey board:
+   captures: Backspace #9fc5ce, @#: #bfbaa4, a letter #d0d0d0) */
+.osk-k::before { content: ""; position: absolute; inset: 0; background: var(--base) center / 100% 100% no-repeat; opacity: 0.66; pointer-events: none; }
+.osk-k.ch::before { opacity: 0.8; }
+.osk-k > span, .osk-k > img { z-index: 1; }
+.osk-k::after { content: ""; position: absolute; left: calc(var(--u) * 3); right: calc(var(--u) * 3); top: calc(var(--u) * 2); bottom: calc(var(--u) * 1.5);
+  border-radius: calc(var(--u) * 4); pointer-events: none; opacity: 0; z-index: 0; }
+.osk-ch { position: absolute; right: calc(var(--u) * 10); bottom: calc(var(--u) * 7); font-size: calc(var(--u) * 22); line-height: 1; color: #2c2c2c; font-weight: 400;
+  -webkit-text-stroke: 0.014em currentColor; }
+/* the keys' labels are printed on them, as on the console: no shadow (the
+   menus' text shadow made them look bold and black) */
+.osk-k, .osk-k * { text-shadow: none !important; }
+.osk-fl { position: absolute; right: calc(var(--u) * 13); bottom: calc(var(--u) * 7); font-size: calc(var(--u) * 17.5); line-height: 1.1;
+  color: #0d2f55; white-space: nowrap; -webkit-text-stroke: 0.026em currentColor; }
+/* (the a/à, a/A and @/ labels: only a touch bolder, like the letters) */
+.osk-cap, .osk-sym { -webkit-text-stroke: 0.014em currentColor; }
+.osk-smile { height: 0.92em; width: auto; vertical-align: -0.12em; margin-left: calc(var(--u) * 1.5); }
+.osk-k.b-o .osk-fl, .osk-k.b-e .osk-fl { color: #2a2a22; font-size: calc(var(--u) * 17); }
+.osk-sym { position: relative; right: calc(var(--u) * 6); }
+/* the @#: key while its panel is open: lit */
+.osk-k.b-o.on { filter: brightness(1.12) saturate(1.25); }
+.osk-k.b-b_s .osk-fl, .osk-k.b-p .osk-fl:has(.osk-ico) { left: 0; right: 0; text-align: center; bottom: calc(var(--u) * 11); }
+/* the arrows: at the lower right, flattened (▲ ▼ wide and short, ◀ ▶ tall and narrow) */
+.osk-k.b-b_s.rt .osk-fl { left: auto; right: calc(var(--u) * 14); bottom: calc(var(--u) * 9); line-height: 0; }
+.osk-ar { display: block; }
+.osk-ar-v { width: calc(var(--u) * 18); height: calc(var(--u) * 9); }
+.osk-ar-h { width: calc(var(--u) * 10); height: calc(var(--u) * 17); }
+/* the 9 squares: wider than tall */
+.osk-k.b-p .osk-ico svg { width: calc(var(--u) * 29); height: calc(var(--u) * 19); }
+/* copy / paste: the picture at the lower right (capture: 12 px in, 6 px up) */
+.osk-k.cp .osk-fl { left: auto; right: calc(var(--u) * 12); bottom: calc(var(--u) * 6); text-align: right; }
+.osk-arrow { font-size: calc(var(--u) * 16); color: #0d2f55; }
+.osk-ico svg { width: calc(var(--u) * 30); height: calc(var(--u) * 30); display: inline-block; vertical-align: middle; }
+/* Paste: grey while there's nothing to paste, dark blue (like Copy) once something was copied */
+.osk-paste { color: #7f9cab; }
+.osk-paste.can { color: #0d2f55; }
+/* the button label pictures (OSK Icons, 74×28): at the key's top-left as on the console */
+.osk-badge { position: absolute; left: calc(var(--u) * 1.2); top: calc(var(--u) * 1.2); height: calc(var(--u) * 27); width: auto; pointer-events: none; }
+/* the focused key glows all over (not just its rim), pulsing */
+/* the focused key: a bright glowing rim all round (and a light glow inside), pulsing */
+.osk-k.sel::after { background: radial-gradient(ellipse at 50% 45%, rgba(255,255,255,0.42), rgba(255,255,255,0.2) 70%, rgba(255,255,255,0.12));
+  box-shadow: inset 0 0 0 calc(var(--u) * 2) rgba(255,255,255,0.95), inset 0 0 calc(var(--u) * 8) rgba(255,255,255,0.8),
+    0 0 calc(var(--u) * 8) rgba(255,255,255,0.85); animation: oskSel 1.7s ease-in-out infinite; }
+@keyframes oskSel { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+/* the @#: panel (IMG_3540 / 3541): grey, over the left of the keys, the
+   symbols 7 to a row (7 rows on show), the focused one on the console's
+   focus square; a thin scroll bar down its right side and, once scrolled,
+   a ▲ over it */
+.osk-symp { position: absolute; left: calc(var(--u) * 78); top: calc(var(--u) * -4); width: calc(var(--u) * 330); height: calc(var(--u) * 318);
+  background: linear-gradient(180deg, #8f9192 0, #9a9c9c calc(var(--u) * 9), #a7a9a8 calc(var(--u) * 11), #a5a7a6 100%);
+  border-radius: calc(var(--u) * 4); z-index: 3;
+  box-shadow: calc(var(--u) * 2) calc(var(--u) * 4) calc(var(--u) * 10) rgba(0,0,0,0.45), inset 0 0 0 calc(var(--u) * 1) rgba(255,255,255,0.18); }
+.osk-symgrid { position: absolute; left: 0; top: calc(var(--u) * 11); width: calc(var(--u) * 318.5); bottom: calc(var(--u) * 6); }
+.osk-sy { position: absolute; left: calc(var(--u) * var(--sx) * 45.5); top: calc(var(--u) * var(--sy) * 43);
+  width: calc(var(--u) * 45.5); height: calc(var(--u) * 43); display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--u) * 21); color: #fff; text-shadow: 0 calc(var(--u) * 1) calc(var(--u) * 1.5) rgba(0,0,0,0.35); cursor: pointer; pointer-events: auto; }
+.osk-sy.sel { background: url('./assets/icons/osk/focus_symbol.png') center / 100% 100% no-repeat; animation: oskSel 1.7s ease-in-out infinite; }
+.osk-symbar { position: absolute; right: calc(var(--u) * 4); top: calc(var(--u) * 12); bottom: calc(var(--u) * 8); width: calc(var(--u) * 6);
+  box-sizing: border-box; border-left: calc(var(--u) * 1) solid rgba(255,255,255,0.4); border-right: calc(var(--u) * 1.5) solid rgba(255,255,255,0.85);
+  background: rgba(0,0,0,0.05); }
+.osk-symthumb { position: absolute; left: 0; right: 0; background: linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.8)); }
+.osk-symup { position: absolute; left: 50%; top: calc(var(--u) * -30); transform: translateX(-50%); width: 0; height: 0;
+  border-left: calc(var(--u) * 13) solid transparent; border-right: calc(var(--u) * 13) solid transparent;
+  border-bottom: calc(var(--u) * 12) solid #a6a8a9; filter: drop-shadow(0 calc(var(--u) * 1) calc(var(--u) * 1) rgba(0,0,0,0.3)); }
+.osk-pred { position: absolute; left: calc(var(--u) * 724); top: 0; width: calc(var(--u) * 208); height: calc(var(--u) * 266); pointer-events: none; }
+.osk-predbox { position: absolute; left: 0; top: 0; right: 0; height: calc(var(--u) * 231); background: #6d6f6f;
+  box-shadow: inset 0 calc(var(--u) * 1) 0 rgba(255,255,255,0.12); }
+/* the bar beside the prediction box (capture): a plain flat grey strip from
+   the box's top down to the Prediction bar, a faint light line on its left */
+.osk-scroll { position: absolute; right: calc(var(--u) * 5); top: calc(var(--u) * 3); bottom: 0; width: calc(var(--u) * 11);
+  background: linear-gradient(90deg, #5d5f5f 0, #5d5f5f calc(var(--u) * 1), #8d8f8f calc(var(--u) * 1), #828484 calc(var(--u) * 3), #7a7c7c 55%, #747676 100%); }
+.osk-predbar { position: absolute; left: 0; right: 0; top: calc(var(--u) * 231); height: calc(var(--u) * 35); display: flex; align-items: center;
+  justify-content: space-between; padding: 0 calc(var(--u) * 6) 0 calc(var(--u) * 10); box-sizing: border-box;
+  background: linear-gradient(180deg, #515151 0%, #464646 50%, #3d3d3d 100%); color: #d4e6f3; font-size: calc(var(--u) * 15.5); }
+/* a / 0: two little bold boxes side by side */
+.osk-modes { display: flex; gap: calc(var(--u) * 3); align-self: flex-end; margin-bottom: calc(var(--u) * 2); margin-right: calc(var(--u) * -2); }
+.osk-modes b { min-width: calc(var(--u) * 24); height: calc(var(--u) * 28); line-height: calc(var(--u) * 28); text-align: center; font-size: calc(var(--u) * 19);
+  font-weight: 700; -webkit-text-stroke: 0.04em currentColor; color: #fff; padding: 0 calc(var(--u) * 3); box-sizing: border-box;
+  background: url('./assets/icons/osk/kb_mode_base.png') center / 100% 100% no-repeat; }
+/* (its lower corners slope in a little, as in the capture) */
+.osk-foot { height: calc(var(--u) * 60);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--u) * 12), calc(100% - var(--u) * 5) 100%, calc(var(--u) * 5) 100%, 0 calc(100% - var(--u) * 12));
+  background: linear-gradient(180deg, #2a2a2a 0%, #444444 6%, #3e3e3e 30%, #363636 60%, #383838 72%, #4f4f4f 74%, #555555 100%); }
+
+/* ---------- Friends section: player + friend cards ----------
+   Two states switched entirely in CSS:
+     • NOT selected  → compact: framed avatar + name + game (no card/bubble).
+     • selected      → full card: coloured rectangle + bubble + trophy + diamond.
+*/
+.item.item-card { transform: translate(0, -50%); }
+.fc-root { zoom: var(--ux, 1); }   /* px sizes are for 1080p: follow the window height */         /* left-anchored, not centered */
+.fc-root { position: relative; display: block; width: 460px; height: 92px;
+  transform: scale(1); transform-origin: left center;
+  transition: transform .2s ease, filter .2s ease; overflow: visible; }
+.item.item-card.sel .fc-root { width: 638px; height: 140px; transform: scale(1.25); }   /* 798x175 @1080 (friends ref) */
+.item.item-card:not(.sel) .fc-root { filter: saturate(0.95) brightness(0.97); }
+
+/* ---- avatar (both states): rounded-square window + plastic sheen ---- */
+.fc-avslot { position: absolute; left: 0; top: 9px; width: 74px; height: 74px;
+  border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 2px var(--card-bg, #3f6fd0); }
+.item.item-card.sel .fc-avslot { left: 5.5px; top: 5.5px; width: 128.5px; height: 129px;   /* 1 px over the hole on every side: no hairline gap */
+  border-radius: 14px; box-shadow: none; }
+.fc-avslot .fc-av { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* the default avatars (the ones Users and PSN players share): on the selected
+   card they sit well inside the avatar window, 58 % of it, centred
+   (friends capture BF84E470: a 93 px face in the 161 px window) */
+.fc-glass { position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.46) 0%, rgba(255,255,255,0.18) 32%,
+    rgba(255,255,255,0.04) 49%, rgba(255,255,255,0.0) 60%, rgba(0,0,0,0.12) 100%); }
+
+/* ---- coloured card rectangle: ONLY when selected ---- */
+.friend-card { display: none; }
+.item.item-card.sel .friend-card { display: block; position: absolute; inset: 0;
+  box-sizing: border-box; border-radius: 10px;
+  /* the console's card (friends capture): the colour is see-through (the
+     background shows faintly), the top half carries a soft gloss that stops
+     at the middle, the bottom half is flat */
+  background:
+    linear-gradient(180deg,
+      rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.26) 22%, rgba(255,255,255,0.17) 44%,
+      rgba(255,255,255,0.06) 50%, rgba(255,255,255,0) 53%, rgba(0,0,0,0) 85%, rgba(0,0,0,0.05) 100%),
+    color-mix(in srgb, var(--card-bg, #868485) 80%, transparent);
+  -webkit-mask: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Crect width='100' height='100' rx='14' ry='14' fill='%23fff'/%3E%3C/svg%3E");
+  -webkit-mask-position: 0 0, 6px 6px; -webkit-mask-size: 100% 100%, 127px 128px;
+  -webkit-mask-repeat: no-repeat, no-repeat; -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Crect width='100' height='100' rx='14' ry='14' fill='%23fff'/%3E%3C/svg%3E");
+  mask-position: 0 0, 6px 6px; mask-size: 100% 100%, 127px 128px;
+  mask-repeat: no-repeat, no-repeat; mask-composite: exclude; }
+
+/* ---- top row of the full card: speech bubble + trophy chip ----
+   One flex row so the trophy always follows the bubble with a fixed gap and the
+   level number sits right next to the icon (reference: Full Card Reference).
+   The bubble keeps its 400px width when there's room and only shrinks when a
+   long level (e.g. "122") needs the space, so nothing ever touches. */
+.fc-toprow { display: none; }
+.item.item-card.sel .fc-toprow { position: absolute; left: 149px; top: 6px; right: 16px; height: 39px;
+  display: flex; align-items: center; gap: 7px; z-index: 3; }
+
+/* no bubble: the trophy keeps its place at the right end of the card */
+.item.item-card.sel .fc-toprow.no-msg { justify-content: flex-end; }
+/* ---- trophy chip: only inside the full card ---- */
+.fc-trophy { display: none; }
+.item.item-card.sel .fc-trophy { position: static; flex: 0 0 auto; display: flex; align-items: center; gap: 3px; }
+.fc-trophy-ic { width: 37.5px; height: 37.5px; flex: 0 0 auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4)); }
+/* the trophy and the level share one centre line (friends capture: both span
+   y 433-470 @1080); the digits' box sits high, so they're nudged down */
+.item.item-card.sel .fc-trophy-ic { position: relative; top: 3.2px; }
+.item.item-card.sel .fc-level { position: relative; top: 6.8px; }
+.fc-level { font-size: 39.06px; font-weight: 700; color: #f2f2f2; text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  line-height: 1; white-space: nowrap; }
+
+/* ---- diamond: ONLY the player's own card, and ALWAYS visible (hovered or not) ---- */
+.fc-diamond { display: none; }
+.fc-root.player .fc-diamond { display: block; position: absolute; left: -48px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; background: url('./assets/icons/system/diamond_indicator.png') left center/auto 100% no-repeat; z-index: 4; }
+
+/* ---- name + blue circle ---- */
+.fc-name { position: absolute; left: 90px; top: 21px; right: 6px;
+  display: flex; align-items: center; gap: 13px; font-size: 30px; font-weight: 600; z-index: 2; }
+.item.item-card.sel .fc-name { left: 149px; top: 56px; right: 88px; gap: 8px; font-size: 28px; }
+.item.item-card.sel .fc-dot { width: 22px; height: 22px; }
+.fc-name .fc-nm { min-width: 0; }   /* clip box for the marquee */
+/* the hovered card's name glows like other selected XMB labels */
+/* only the name glows (not the status dot); the padding keeps the glow from
+   being clipped by the marquee box */
+.item.item-card.sel .fc-nm { padding: 14px 12px; margin: -14px -12px; animation: xmbCardNameGlow 3.4s ease-in-out infinite; }
+.fc-dot { width: 22px; height: 22px; flex: 0 0 auto;
+  background-position: center; background-size: contain; background-repeat: no-repeat; }
+
+/* ---- info line under the name: game / friend-request / last-sign-in ---- */
+.fc-game { position: absolute; left: 90px; top: 55px; right: 6px;
+  display: flex; align-items: center; font-size: 18px; opacity: 0.92; z-index: 2; }
+/* sits right under the player name (close) on the full card; the game icon's
+   centre is aligned with the blue indicator dot above it (dot centre = 139px). */
+.item.item-card.sel .fc-game { left: 143px; top: 92px; right: 88px; font-size: 18px; }
+.fc-game .fc-gm { min-width: 0; }   /* clip box for the marquee */
+/* text-only info lines (friend request / last sign-in) carry no game icon, so
+   they align with the PSN name text instead of the dot (name text = left+27). */
+.fc-game.fc-info { left: 125px; }
+.item.item-card.sel .fc-game.fc-info { left: 176px; }
+.fc-gpad { display: inline-block; width: 27px; height: 27px; flex: 0 0 auto; margin-right: 6px;
+  background: currentColor; opacity: 0.9;
+  -webkit-mask: url('./assets/icons/theme/icon_game.png') center/contain no-repeat;
+  mask: url('./assets/icons/theme/icon_game.png') center/contain no-repeat; }
+.item.item-card.sel .fc-gpad { width: 30px; height: 30px; margin-right: 6px; }
+
+/* ---- speech bubble: only when selected; text vertically centred, large ---- */
+.fc-msg { display: none; }
+.item.item-card.sel .fc-msg { position: static; box-sizing: border-box;
+  flex: 1 1 400px; min-width: 0; height: 38px;
+  background: #f4f4f4; color: #1a1a1a; text-shadow: none; border-radius: 9px;
+  padding: 3px 14px; font-size: 17px; line-height: 1.4; font-weight: 400; color: #3a3a3a;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.32);
+  display: flex; align-items: center; overflow: hidden; white-space: nowrap; }
+/* message text inside the bubble scrolls (marquee) when longer than fits */
+.item.item-card.sel .fc-msg .fc-msgtext { min-width: 0; flex: 1 1 auto; }
+/* the provided tail graphic: a SIBLING of the bubble (so it isn't clipped),
+   sitting UNDER the bubble: its top tucks a few px inside the bubble's bottom
+   (bubble draws over it, z-index 3 > 2) and it reaches down toward the blue
+   circle below. Only shown on the hovered/full card. */
+.fc-tail { display: none; }
+.item.item-card.sel .fc-tail { display: block; position: absolute; left: 152px; top: 44px;
+  width: 120px; height: 19px; z-index: 4; pointer-events: none;
+  filter: drop-shadow(0 2px 1px rgba(0,0,0,0.18)); }
+/* ---- side badges: PS Plus (upper) + message (lower, with number), left of card.
+   They never overlap: the diamond only shows on the player's card, badges only
+   on friend cards, and PS Plus sits above the message badge. ---- */
+/* Positions measured from the Friends capture (CAB30248): compact rows show a
+   ~20 px PS Plus mark touching the top-left of the avatar frame and a ~22 px
+   message mark just left of it; the hovered card shows them ~47 px / ~39 px
+   wide to the left of the card's top half. (Box sizes include the PNGs'
+   transparent padding; the full card is drawn at 1.25x, hence the odd numbers.) */
+.fc-plus { position: absolute; left: -33.5px; top: -1.5px; width: 27px; height: 27px; z-index: 4; pointer-events: none; }
+.item.item-card.sel .fc-plus { left: -54.4px; top: -20.4px; width: 51.2px; height: 51.2px; }
+.fc-plus img { width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35)); }
+.fc-mbox { position: absolute; left: -43px; top: 7.5px; width: 44px; height: 44px; z-index: 4; pointer-events: none; }
+.item.item-card.sel .fc-mbox { left: -60.4px; top: 10.4px; width: 62.4px; height: 62.4px; }
+.fc-mbox img { width: 100%; height: 100%; object-fit: contain; display: block; opacity: 0.9; }
+/* the number under the message icon shows ONLY on the hovered/selected card;
+   the message + PS Plus icons themselves stay visible in both states. */
+.fc-badge-num { display: none; position: absolute; left: 0; right: 0; top: 78%; text-align: center;
+  font-size: 13px; font-weight: 700; line-height: 1; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.7); }
+.item.item-card.sel .fc-badge-num { display: block; }
+
+/* ---------- Custom Color picker (Turn-Off-style panel) ---------- */
+.colorpick { position: fixed; inset: 0; z-index: 76; display: none; align-items: center; justify-content: center;
+  background: rgba(10,12,20,0.22); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); color: var(--text); }
+.colorpick.show { display: flex; }
+.colorpick::before, .colorpick::after { content: ""; position: fixed; left: 0; right: 0; height: 1.5px;
+  background: rgba(255,255,255,0.85); pointer-events: none; }
+.colorpick::before { top: 18.5vh; }
+.colorpick::after { top: 81.5vh; }
+.cp-inner { width: 46vh; display: flex; flex-direction: column; align-items: stretch; gap: 0.9vh; }
+.cp-title { text-align: center; font-size: 2.13vh; margin-bottom: 0.4vh; text-shadow: 0 1px 8px rgba(0,0,0,0.5); }
+.cp-top { display: flex; align-items: center; justify-content: center; gap: 2.4vh; padding: 0.4vh; border-radius: 0.6vh; }
+.cp-wheelwrap { position: relative; width: 24vh; height: 24vh; }
+.cp-wheel { width: 100%; height: 100%; border-radius: 50%; cursor: crosshair; display: block;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.35), 0 0.4vh 1.6vh rgba(0,0,0,0.45); }
+.cp-knob { position: absolute; width: 1.6vh; height: 1.6vh; border-radius: 50%; transform: translate(-50%, -50%);
+  border: 0.25vh solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 0 0.6vh rgba(0,0,0,0.6); pointer-events: none; }
+.cp-swatch { width: 6vh; height: 6vh; border-radius: 0.6vh; border: 1px solid rgba(255,255,255,0.5); overflow: hidden;
+  background: repeating-conic-gradient(#888 0 25%, #ccc 0 50%) 0 0 / 1.2vh 1.2vh; }
+.cp-swfill { width: 100%; height: 100%; }
+.cp-row { display: grid; grid-template-columns: 10vh 1fr 5vh; align-items: center; gap: 1vh; font-size: 1.9vh;
+  padding: 0.3vh 0.6vh; border-radius: 0.5vh; }
+.cp-lab { opacity: 0.85; }
+.cp-val { text-align: right; font-variant-numeric: tabular-nums; }
+.cp-range { width: 100%; accent-color: #d8e4f0; cursor: pointer; }
+.cp-row[data-row="hex"] { grid-template-columns: 7vh 1fr; }
+.cp-hex { font-family: var(--ui-font); font-size: 2vh; color: var(--text); background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.4); border-radius: 0.4vh; padding: 0.4vh 0.8vh; text-transform: uppercase; }
+.cp-btns { display: flex; justify-content: center; gap: 2vw; margin-top: 0.8vh; padding: 0.4vh; }
+.cp-btns button { font-family: var(--ui-font); font-size: 2.1vh; width: 9vw; height: 3.9vh; color: #fff; border: none;
+  border-radius: 0.35vh; cursor: pointer; background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); }
+/* Cancel and Confirm are the same blue (as in the avatar selection); the one
+   the cursor is on gets the white frame */
+.cp-btns .cp-cancel { background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); }
+/* no highlight box around the button row (the focused button is enough) */
+.cp-btns.cp-focus { background: none; box-shadow: none; }
+.cp-focus { background: rgba(255,255,255,0.1); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35); }
+.colorpick .confirm-foot { position: fixed; }
+/* custom icon colours can carry an opacity */
+.sysicon:not(.coloricon) { filter: opacity(var(--icon-alpha, 1)); }
+
+/* before a user logs in the pointer is gone (and parked in the middle) */
+body.cursor-locked, body.cursor-locked * { cursor: none !important; }
+
+/* ---------- Change Keybinds (laid out like the Sign-In screen, see .uisheet) ---------- */
+.kb-inner { position: fixed; left: 50%; transform: translateX(-50%); top: 19.6vh; width: 62vw; display: flex; flex-direction: column; gap: 0.6vh; }
+.kb-head, .kb-row { display: grid; grid-template-columns: 12vw 12vw 1fr 1fr; align-items: center; gap: 1vw; }
+.kb-head { font-size: 1.6vh; opacity: 0.65; padding: 0 0.6vw; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); }
+.kb-list { max-height: 44.5vh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35vh; padding: 1.2vh 1vw 1.2vh 0.9vw; }
+.kb-row { font-size: 1.9vh; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); }
+.kb-pad { opacity: 0.95; }
+.kb-name { opacity: 0.65; }
+/* the key slots: the Sign-In fields */
+.kb-key { font-family: var(--ui-font); font-size: 1.8vh; color: #fff; height: 3.3vh; cursor: pointer; box-sizing: border-box;
+  background: rgba(0,12,30,0.18); border: 1px solid rgba(225,235,245,0.38); border-radius: 0.3vh;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); transition: background .15s ease, border-color .15s ease; }
+.kb-key:hover { background: rgba(255,255,255,0.1); }
+.keybinds .kb-key.act-focus { outline: none; filter: none; border: 2px solid rgba(255,255,255,0.92); animation: tfxFill 3.4s ease-in-out infinite; }
+/* (no blue anywhere: the key waiting for a press glows white like the focus;
+   clicked buttons keep no focus ring) */
+.kb-key.listening { border: 2px solid #fff; animation: tfxFill 1.6s ease-in-out infinite; }
+.kb-key:focus, .kb-key:focus-visible, .keybinds button:focus, .keybinds button:focus-visible { outline: none; }
+.kb-mouse { margin-top: 0.6vh; font-size: 1.5vh; opacity: 0.65; text-align: center; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); }
+.kb-btns { position: fixed; left: 0; right: 0; top: 74.2vh; display: flex; justify-content: center; gap: 2.4vw; }
+.kb-btns .ui-btn { min-width: 8vw; }
+.kb-wait { position: fixed; left: 0; right: 0; top: 14.6vh; transform: translateY(-50%); text-align: center; font-size: 2vh; color: #8fd3ff;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.6); opacity: 0; transition: opacity .2s; }
+.kb-wait.on { opacity: 1; }
+/* screenshot saved */
+.shot-toast { position: fixed; left: 5vw; bottom: 6vh; z-index: 95; display: flex; align-items: center; gap: 1vh;
+  padding: 1vh 1.6vh; border-radius: 0.5vh; font-size: 2vh; color: #f2f2f2; pointer-events: none;
+  background: rgba(10,12,20,0.7); border: 1px solid rgba(255,255,255,0.25); opacity: 0; transition: opacity .3s ease; }
+.shot-toast.on { opacity: 1; }
+.shot-flash { position: fixed; inset: 0; z-index: 96; background: #fff; opacity: 0; pointer-events: none; transition: opacity .35s ease; }
+.shot-flash.on { opacity: 0.35; transition: none; }
+
+/* typing the player-card comment with a keyboard */
+.pc-edit { display: flex; gap: 0.8vw; align-items: center; justify-content: center; }
+.pc-input { width: 34vw; font-family: var(--ui-font); font-size: 2vh; color: var(--text); background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.45); border-radius: 0.4vh; padding: 0.6vh 0.8vw; }
+.pc-edit button { font-family: var(--ui-font); font-size: 1.9vh; padding: 0.6vh 1.4vw; color: #fff; border: none; border-radius: 0.35vh;
+  cursor: pointer; background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); }
+
+/* ---------- PSN Sign-In / Sign-Up screens (laid out from the 1920x1080 console captures) ----------
+   Every menu with the two rules blurs what is behind it, like the Sign-In capture
+   (Remove Menu Blur turns that off). */
+.form.psnsign { display: block; background: none; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.form.psnsign::before, .form.psnsign::after { height: 1px; background: rgba(235,240,245,0.62); }
+.form.psnsign::before { top: 17.13vh; }
+.form.psnsign::after { top: 82.13vh; }
+.psnsign > * { position: fixed; }
+.psnsign .ps-hold { left: 8.52vw; right: 8.52vw; top: 14.6vh; transform: translateY(-50%); font-size: 2.12vh; color: #f2f4f6;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .2s; }
+.psnsign .ps-hold.on { opacity: 1; }
+.psnsign .ps-lab { left: 28.59vw; font-size: 2.12vh; color: #f4f6f8; transform: translateY(-50%);
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); white-space: nowrap; }
+.psnsign .ps-field { left: 28.39vw; width: 43.39vw; height: 3.52vh; box-sizing: border-box; display: block;
+  background: rgba(0,12,30,0.18); border: 1px solid rgba(225,235,245,0.38); border-radius: 0.3vh;
+  cursor: text; transition: background .15s ease, border-color .15s ease; }
+/* the focused field: a whole rounded box glowing all over (the Create New User field) */
+.psnsign .ps-field.sel { border: 2px solid rgba(255,255,255,0.92); animation: tfxFill 3.4s ease-in-out infinite; }
+.psnsign .ps-in { width: 100%; height: 100%; box-sizing: border-box; padding: 0 0.6vw; border: none; outline: none; background: none;
+  font-family: var(--ui-font); font-size: 2.05vh; color: #fff; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); }
+.psnsign .ps-check { left: 37.43vw; display: flex; align-items: center; font-size: 2.12vh; color: #eef1f4;
+  transform: translateY(-50%); cursor: pointer; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); white-space: nowrap; }
+.psnsign .ps-check.sel span { animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.psnsign .ps-box { width: 4.98vh; height: 4vh; flex: 0 0 auto; display: block; pointer-events: none; }
+/* greyed out (Auto Sign-In on): dimmed, not grey: the words go dark and the
+   tick keeps some of its blue (E3AD8BD1 capture) */
+.psnsign .ps-check.dis { color: rgba(48,52,58,0.78); cursor: default; text-shadow: 0 0.1vh 0.25vh rgba(255,255,255,0.22); }
+.psnsign .ps-check.dis .ps-box { filter: brightness(0.42) saturate(0.85); }
+.psnsign .ps-check.dis.sel span { animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.ps-btn, .ui-btn { font-family: var(--ui-font); font-size: 2.12vh; padding: 0 1.2vw; cursor: pointer; height: 4.17vh; box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,0.55); border-radius: 0.3vh; color: #fff; white-space: nowrap;
+  background: linear-gradient(180deg, rgba(225,228,232,0.62), rgba(165,170,176,0.55) 55%, rgba(140,146,152,0.6));
+  text-shadow: 0 0.1vh 0.2vh rgba(0,0,0,0.5); transition: box-shadow .2s, border-color .2s; }
+.ps-btn.off, .ui-btn.off { color: rgba(70,74,80,0.9); text-shadow: 0 0.1vh 0 rgba(255,255,255,0.35); }
+.ps-btn.sel, .ui-btn.sel { border-color: #fff; animation: tfxBtnFill 3.4s ease-in-out infinite; }
+.psnsign .ps-btn { left: 50.08vw; transform: translateX(-50%); min-width: 5.73vw; }
+.psnsign.ps-signin .ps-b1 { width: 5.73vw; padding: 0; }
+.psnsign.ps-signin .ps-b2 { width: 15.68vw; height: 4.07vh; padding: 0; }
+.psnsign .ps-foot { left: 0; right: 0; top: 0; height: 0; }
+.psnsign .ps-hint { position: fixed; display: inline-flex; align-items: center; gap: 0.7vw; font-size: 2.12vh; color: #f2f4f6;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); transform: translateY(-50%); top: 84.9vh; white-space: nowrap; }
+.psnsign .ps-h1 { left: 37.5vw; }
+.psnsign .ps-h2 { left: 60.57vw; }
+.psnsign .ps-glyph { font-size: 2.65vh; line-height: 1; font-weight: 700; }
+/* Signing in... / Please wait. (the loading clock shows at the top right) */
+.psnsign .ps-wait { left: 0; right: 0; top: 49.58vh; transform: translateY(-50%); text-align: center; font-size: 2.12vh; color: #f4f6f8;
+  line-height: 3.24vh; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); }
+body.psn-loading #infobox { visibility: visible !important; z-index: 72; }
+/* menus without a console capture (Background Music, Change Keybinds, lists)
+   drawn like the Sign-In screen: its two rules, the title over the top one,
+   its buttons and its ✕ / ○ hints under the bottom one */
+.form.show.uisheet { display: block; background: rgba(0,0,0,0.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.form.show.uisheet::before, .form.show.uisheet::after { height: 1px; background: rgba(235,240,245,0.62); }
+.form.show.uisheet::before { top: 17.13vh; }
+.form.show.uisheet::after { top: 82.13vh; }
+body.nomenublur .form.show.uisheet { background: rgba(6,8,14,0.55); }
+.us-title { position: fixed; left: 8.52vw; right: 8.52vw; top: 14.6vh; transform: translateY(-50%); font-size: 2.3vh; color: #f4f6f8;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.us-body { position: fixed; left: 0; right: 0; top: 19.6vh; bottom: 20.4vh; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 3.4vh; }
+.us-btns { display: flex; justify-content: center; gap: 2.4vw; flex: none; }
+.us-btns .ui-btn { min-width: 6.5vw; }
+.us-foot { position: fixed; left: 0; right: 0; top: 0; height: 0; }
+.us-hint { position: fixed; display: inline-flex; align-items: center; gap: 0.7vw; font-size: 2.12vh; color: #f2f4f6; cursor: pointer;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); transform: translateY(-50%); top: 84.9vh; white-space: nowrap; }
+.us-h1 { left: 37.5vw; }
+.us-hm { left: 47.6vw; }
+.us-h2 { left: 60.57vw; }
+.us-glyph { font-size: 2.65vh; line-height: 1; font-weight: 700; }
+/* every scroll bar: the Avatar selection's thin grey rail */
+::-webkit-scrollbar { width: 0.36vw; height: 0.36vw; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.08); }
+::-webkit-scrollbar-thumb { background: rgba(170,175,180,0.9); min-height: 3vh; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---------- Users: Information and the icon chooser (IMG_3578-3597) ---------- */
+.form.uinfo, .form.ichoose { display: block; }
+/* the chosen picture's frame (IMG_3606 / IMG_3610): a bright edge with a soft
+   glow that lights up, dims away to nothing for a moment and lights up again;
+   no frame at all while the focus is elsewhere. The square box (folders,
+   preset icons) has a light see-through fill inside the same edge */
+@keyframes icFrame { 0% { opacity: 0; } 14% { opacity: 0.6; } 40% { opacity: 1; } 76% { opacity: 0.22; } 88%, 100% { opacity: 0; } }
+.ui-box, .ic-box { position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+.ui-box::after, .ic-box::after { content: ""; position: absolute; inset: 0; box-sizing: border-box; pointer-events: none; opacity: 0;
+  border: 0.24vh solid rgba(255,255,255,0.95); box-shadow: 0 0 1vh rgba(255,255,255,0.75), inset 0 0 0.8vh rgba(255,255,255,0.45); }
+.ic-box::after { background: rgba(255,255,255,0.16); }
+.ui-box.sel::after, .ic-box.sel::after { animation: icFrame 2.4s ease-in-out infinite; }
+/* (Information: the frame hugs the picture) */
+.ui-box img { display: block; width: auto; height: auto; max-width: 18.3vh; max-height: 18.3vh; }
+.ui-box img.ui-stock { width: 11.4vh; height: 11.4vh; }
+/* (IMG_3578) a system avatar sits in the middle of a square box, as in the
+   icon chooser: the box 19.5vh, the avatar 55 % of it, the box always shown
+   with its light see-through fill and thin edge (the glow on top when chosen) */
+.ui-box.stock { width: 19.5vh; height: 19.5vh; }
+.ui-box.stock img.ui-stock { width: 10.7vh; height: 10.7vh; position: relative; z-index: 1; }
+.ui-box.stock::before { content: ""; position: absolute; inset: 0; box-sizing: border-box; pointer-events: none;
+  background: rgba(255,255,255,0.16); border: 0.12vh solid rgba(255,255,255,0.62); }
+/* (the focus on the name: the square goes away entirely, the avatar stays) */
+.ui-box.stock:not(.sel)::before { display: none; }
+.ui-box { left: 44vw; top: 33.1vh; transform: translate(-50%, -50%); cursor: pointer; }
+.ui-diamond { position: absolute; left: 37.4vw; top: 33.1vh; width: 2.4vh; height: 2.4vh; transform: translate(-50%, -50%);
+  background: url('./assets/icons/system/diamond_indicator.png') left center / auto 100% no-repeat; }
+.ui-namerow { position: absolute; left: 0; right: 0; top: 47.8vh; height: 0; }
+.ui-lab, .ui-name { position: absolute; top: 0; transform: translateY(-50%); font-size: 1.95vh; text-shadow: 0 1px 3px rgba(0,0,0,0.6); white-space: nowrap; }
+.ui-lab { right: 57.1vw; }
+.ui-name { left: 44.5vw; padding: 0.25vh 0.4vw; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.45); border-radius: 0.3vh; cursor: pointer; }
+.ui-name.sel { border: 2px solid rgba(255,255,255,0.92); animation: tfxFill 3.4s ease-in-out infinite; }
+/* the column: the chosen icon in the box, the others small above and below */
+.ichoose { --cx: 34.7vw; --cy: 46.6vh; }
+.ichoose.ic-photo { --cx: 24vw; --cy: 46.3vh; }
+.ic-col { position: fixed; left: var(--cx); top: calc(var(--cy) - 50vh); height: 100vh; width: 0; }
+.ic-box { left: 0; top: 50%; width: 19.5vh; height: 19.5vh; transform: translate(-50%, -50%); cursor: pointer; z-index: 0; }
+.ic-box.pic { visibility: hidden; }
+/* the rows (the chosen one sits in the box): they slide and grow with the
+   XMB's own timing */
+.ic-row { position: absolute; left: 0; width: 0; height: 0; cursor: pointer; z-index: 1;
+  transition: top 0.28s cubic-bezier(.34,1.08,.42,1); }
+.ic-row.noanim, .ic-row.noanim * { transition: none !important; }
+.ic-th { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); width: 5.2vw; height: 5.8vh;
+  display: flex; align-items: center; justify-content: center;
+  transition: width 0.28s cubic-bezier(.34,1.08,.42,1), height 0.28s cubic-bezier(.34,1.08,.42,1); }
+.ic-preset .ic-th { width: 4.5vh; height: 4.5vh; }
+.ic-preset .ic-row.cur.ic-st .ic-th { width: 10.9vh; height: 10.9vh; }
+.ic-row.cur .ic-th { width: 17.5vh; height: 17.5vh; }
+.ic-row.cur.ic-fold .ic-th { width: 15.6vh; height: 15.6vh; }
+.ic-th .ic-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* a photo: as big as it fits, in its own shape, so its frame sits on its edges */
+.ic-th .ic-img.ic-pic { width: auto; height: auto; max-width: 100%; max-height: 100%; }
+.ic-col.onlist .ic-row.cur .ic-img.ic-pic { outline: 0.24vh solid rgba(255,255,255,0.95); animation: icFrameO 2.4s ease-in-out infinite; }
+@keyframes icFrameO {
+  0%, 88%, 100% { outline-color: rgba(255,255,255,0); box-shadow: 0 0 1vh rgba(255,255,255,0); }
+  14% { outline-color: rgba(255,255,255,0.55); box-shadow: 0 0 1vh rgba(255,255,255,0.4); }
+  40% { outline-color: rgba(255,255,255,0.95); box-shadow: 0 0 1vh rgba(255,255,255,0.75); }
+  76% { outline-color: rgba(255,255,255,0.2); box-shadow: 0 0 1vh rgba(255,255,255,0.15); }
+}
+/* folders keep the folder's own shape (the picture stays inside it): as tall
+   as the row allows when small, as wide as the box when chosen */
+.ic-th .folder-frame { height: 100% !important; width: auto !important; aspect-ratio: 11.45 / 8.6; }
+.ic-row.cur .ic-th .folder-frame, .ic-opened .ic-th .folder-frame { width: 100% !important; height: auto !important; }
+/* inside a folder (IMG_3610): the opened folder far left with ◀ beside it,
+   the list it came from dimmed in a column of its own */
+.ic-pcol { position: fixed; left: 17.3vw; top: calc(var(--cy) - 50vh); height: 100vh; width: 0; opacity: 0.35; pointer-events: none; }
+.ic-prow { position: absolute; left: 0; width: 0; height: 0; }
+.ic-prow .ic-th { width: 4.2vw; height: 4.6vh; }
+.ic-opened { position: fixed; left: 8.7vw; top: calc(var(--cy) + 0.6vh); width: 0; height: 0; }
+.ic-opened .ic-th { width: 14.5vh; height: 11vh; }
+.ic-back { position: fixed; left: 15vw; top: calc(var(--cy) + 0.6vh); height: 2.2vh; width: auto; transform: translate(-50%, -50%) scaleX(-1); opacity: 0.9; }
+.ic-btns.one { padding-top: 4.2vh; }
+.ic-rtitle { position: absolute; left: 4.7vw; top: 0; transform: translateY(-50%); white-space: nowrap; line-height: 1.05;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.45); opacity: 0.92;
+  transition: left 0.28s cubic-bezier(.34,1.08,.42,1), opacity .28s ease; }
+.ic-rt { font-size: 2.4vh; transition: font-size 0.28s cubic-bezier(.34,1.08,.42,1); }
+.ic-row.cur .ic-rtitle { left: calc(9.75vh + 1.3vw); opacity: 1; }
+.ic-row.cur .ic-rt { font-size: 2.6vh; animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.ic-rsub { font-size: 1.4vh; line-height: 1.2; }
+.plp-empty { position: absolute; left: 46.4vw; top: 47.5vh; transform: translateY(-50%); font-size: 2vh; opacity: 0.85; }
+.ic-text { position: fixed; left: 47.8vw; top: 46.6vh; transform: translateY(-50%); font-size: 1.95vh; text-shadow: 0 1px 3px rgba(0,0,0,0.6); white-space: nowrap; }
+.ic-photo .ic-text { left: 40.7vw; top: 37.8vh; }
+.ic-empty { position: fixed; left: var(--cx); top: calc(var(--cy) + 13vh); transform: translateX(-50%); font-size: 1.9vh; opacity: 0.8; }
+.ic-mode { position: fixed; left: 6.6vw; top: 16vh; transform: translateY(-50%); display: flex; align-items: center; gap: 0.5vw; font-size: 1.95vh;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.ic-mode img { height: 2vh; width: auto; }
+.ic-btns { position: fixed; left: 69vw; top: 77.2vh; display: flex; flex-direction: column; gap: 0.9vh; }
+.ic-photo .ic-btns { left: 65.6vw; top: 73.9vh; }
+.ic-btn { height: 3.3vh !important; font-size: 1.75vh !important; min-width: 12.3vw; padding: 0 0.8vw !important; display: inline-flex; align-items: center; justify-content: center; gap: 0.3vw; }
+.ic-photo .ic-btn { min-width: 15.2vw; }
+.ic-sq { height: 1.6vh; width: auto; }
+.uc-foot .cf-hint { cursor: pointer; }
+/* Automatic Login on: the small arrow under the user's name (IMG_3590) */
+.il-autolog { display: block; margin-top: 0.25vh; }
+/* (the Instant Advance arrow without its shadow, IMG_3603: ~1.25vh tall) */
+.il-autolog img { height: 1.25vh; width: auto; display: block; filter: none; }
+/* the log in / log out questions: ◆ beside the logged-in user's icon */
+.gd-diamond { position: absolute; width: 2.4vh; height: 2.4vh; transform: translate(-100%, -50%); top: 50%;
+  background: url('./assets/icons/system/diamond_indicator.png') left center / auto 100% no-repeat; }
+
+/* ---------- video player (PS3 layout, 1920x1080 references) ---------- */
+.vp { position: absolute; inset: 0; overflow: hidden; background: #000; color: #fff; }
+/* sized + centred by fit.js (Screen Mode) */
+.vp-video { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 100%; height: 100%; background: #000; }
+/* subtitles (drawn by the player, see _applySub): no box behind them, in the
+   font in use and the Text Color, with a black outline that never changes */
+.vp-video::cue { color: transparent; background: transparent; text-shadow: none; }
+.vp-subs { position: absolute; left: 5vw; right: 5vw; bottom: 7.5vh; z-index: 3; text-align: center; pointer-events: none;
+  font-family: var(--ui-font); font-size: 3.4vh; line-height: 1.25; color: var(--text, #fff); background: none; }
+.vp-cue { display: inline-block; max-width: 100%; white-space: normal;
+  text-shadow: -0.14vh -0.14vh 0 #000, 0.14vh -0.14vh 0 #000, -0.14vh 0.14vh 0 #000, 0.14vh 0.14vh 0 #000,
+    0 0 0.3vh #000, 0 0 0.3vh #000 !important;
+  -webkit-text-stroke: 0.08vh #000; paint-order: stroke fill; }
+.vp-cue + .vp-cue { display: block; }
+/* SELECT: top band 0-130 px, bottom band 950-1080 px (black, ~64 %) */
+.vp-top, .vp-bottom { position: absolute; left: 0; right: 0; height: 12.04vh; background: rgba(0,0,0,0.64);
+  opacity: 0; visibility: hidden; transition: opacity .45s ease, visibility 0s linear .45s;
+  pointer-events: none; font-size: 2.31vh; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.vp-top { top: 0; } .vp-bottom { bottom: 0; }
+.vp-top.on, .vp-bottom.on { opacity: 1; visibility: visible; transition: opacity .2s ease, visibility 0s; }
+.vp-top > *, .vp-bottom > * { position: absolute; top: 9.9vh; transform: translateY(-50%); white-space: nowrap; }
+.vp-filmicon { left: 5.5vw; height: 4.6vh; width: auto; }
+.vp-title { left: 8.54vw; max-width: 46vw; overflow: hidden; }
+.vp-fmt { display: flex; align-items: center; gap: 1.25vw; font-size: 2.2vh; }
+.vp-afmt { left: 56.25vw; }
+.vp-vfmt { right: 5.2vw; gap: 2vw; }
+.vp-akbps, .vp-vkbps { display: inline-block; min-width: 5.6vw; text-align: right; }
+.vp-badge { height: 2.35vh; width: auto; }
+.vp-bottom > * { top: 2.31vh; }
+.vp-chapter { left: 45vw; }
+.vp-bottom .vp-time { left: 58.07vw; }
+.vp-barwrap { left: 65vw; width: 22.92vw; height: 1.11vh; }
+.vp-barwrap .vp-bar { position: absolute; inset: 0; width: auto; height: auto; margin: 0; }
+/* Go To: the green arrow under the bar at the time being chosen */
+.vp-target { position: absolute; top: 100%; margin-top: 0.15vh; height: 1.11vh; width: auto; transform: translateX(-50%); display: none; }
+.vp-target.on { display: block; }
+.vp-bottom .vp-total { left: 88.85vw; }
+/* Go To: the time pulses like a selected title; while editing, the field
+   being changed pulses and has the up / down arrows */
+.vp-time.glow { animation: xmbLabelGlow 1.7s ease-in-out infinite; }
+.vp-gf { position: relative; display: inline-block; }
+.vp-gf.on { animation: xmbLabelGlow 1.7s ease-in-out infinite; }
+.vp-gup, .vp-gdn { position: absolute; left: 50%; transform: translateX(-50%); height: 1.11vh; width: auto; }
+.vp-gup { bottom: 100%; margin-bottom: 0.1vh; }
+.vp-gdn { top: 100%; margin-top: 0.1vh; }
+.vp.goto .vp-chapter { visibility: hidden; }
+/* status icons at the lower left. Pause glyph x 124-152 / y 959-991 (the
+   74 px textures drawn at 0.86); the number beside it (×10, 90); Repeat always
+   at x 272-343. They fade out like the Music Player's. */
+.vp-status { position: absolute; left: 5.47vw; top: 90.28vh; height: 5.93vh; transform: translateY(-50%);
+  display: flex; align-items: center; opacity: 0; transition: opacity .6s ease; pointer-events: none; }
+.vp-status.on { opacity: 1; transition: opacity .15s ease; }
+.vp-st-main { display: inline-flex; align-items: center; }
+.vp-st { height: 5.93vh; width: auto; }
+.vp-st-num { height: 2.9vh; width: auto; margin-left: 0.1vw; }
+.vp-st-rep { position: absolute; left: 8.1vw; top: 50%; transform: translateY(-50%); height: 6.15vh; width: auto;
+ }
+/* the small box above them: "♪ 1 Right", "Zoom", "Repeat On" (x 99-240, centre y 923) */
+.vp-box { position: absolute; left: 5.15vw; top: 85.5vh; transform: translateY(-50%); display: none; align-items: center;
+  gap: 0.45vw; height: 3.4vh; padding: 0 0.6vw; border-radius: 0.4vh; box-sizing: border-box;
+  background: rgba(24,24,24,0.88); border: 1px solid rgba(255,255,255,0.22);
+  font-size: 1.95vh; white-space: nowrap; text-shadow: none; }
+.vp-box.on { display: flex; }
+.vp-box img { height: 2.9vh; width: auto; margin-left: -0.3vw; }
+.vp-note { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 2.6vh; display: none;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+.vp-note.on { display: block; }
+/* △ panel (PSP-style capture): centre x 563, rows at y 413 / 478 / 543 */
+.vp-cluster { left: 29.3vw; top: 34.85vh; }
+.vp-cluster .mp2-btn.btn-off { opacity: 0.4; }   /* (not "dim": that is the brightness layer's class) */
+/* Scene Search: lower band from 63.8 %, selected thumb fixed at x 45.7 % */
+.vp-layer { position: absolute; inset: 0; pointer-events: none; }
+.vp-scene { position: absolute; left: 0; right: 0; top: 63.8vh; bottom: 0; background: rgba(40,40,40,0.55); }
+.vp-scene-label { position: absolute; left: 45.7vw; width: 11.65vw; top: 1.6vh; text-align: center; font-size: 2.2vh; white-space: nowrap; }
+.vp-arrows { position: absolute; left: 50%; top: 50%; }
+.vp-arrows img { position: absolute; left: 0; transform: translateX(-50%); height: 1.11vh; width: auto; }
+.vp-arrows img.up { top: -1.9vh; }
+.vp-arrows img.dn { top: 0.95vh; }
+.vp-thumbs { position: absolute; left: 0; right: 0; top: 7.2vh; height: 11.5vh; }
+.vp-thumb { position: absolute; top: 0; left: calc(45.7vw + var(--k) * 12.25vw); width: 11.65vw; height: 11.5vh;
+  background: #111; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.25); overflow: hidden; }
+.vp-thumb.sel { border: 0.3vh solid #fff; overflow: visible; animation: vpThumbGlow 1.7s ease-in-out infinite; }
+/* the scene you're on glows all round, at the What's New outline's pace */
+@keyframes vpThumbGlow {
+  0%, 100% { box-shadow: 0 0 0.6vh rgba(255,255,255,0.45); }
+  50% { box-shadow: 0 0 1.6vh rgba(255,255,255,1), 0 0 3vh rgba(255,255,255,0.6); }
+}
+.vp-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vp.scene .vp-status, .vp.scene .vp-box, .vp.scene .vp-bottom, .vp.scene .vp-top, .vp.scene .vp-cluster { display: none; }
+.vp-scene-name { position: absolute; left: 45.7vw; top: 20.4vh; display: flex; align-items: center; gap: 0.35vw; font-size: 2.2vh; }
+.vp-ssbtn { height: 2.78vh; width: auto; }
+.vp-scene-bar { position: absolute; left: 0; right: 0; top: 25.4vh; height: 3vh; font-size: 2.1vh; }
+.vp-scene-bar > * { position: absolute; top: 50%; transform: translateY(-50%); margin: 0; }
+.vp-scene-bar .vp-time { left: 60.4vw; }
+.vp-scene-bar .vp-bar { left: 66.3vw; width: 22.3vw; }
+.vp-scene-bar .vp-total { left: 90.4vw; }
+/* confirmation (Change Icon / Delete), from the 1920x1080 capture: rules at
+   y 199 / 879, picture x 427-853 / y 420-660, text from x 891 (24 px, 34 px
+   lines), Yes / No centred under the text at y 610, Enter x 724 / Back x 1155 */
+.vp-dlg { position: absolute; inset: 0; background: rgba(0,0,0,0.42); font-size: 2.32vh; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.vp-dlg::before, .vp-dlg::after { content: ""; position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.75); }
+.vp-dlg::before { top: 18.43vh; } .vp-dlg::after { top: 81.4vh; }
+.vp-dlg-thumb { position: absolute; left: 22.24vw; top: 38.9vh; width: 22.19vw; height: 22.22vh; overflow: hidden; background: #000; }
+.vp-dlg-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vp-dlg-body { position: absolute; left: 50%; top: 41.85vh; transform: translateX(-50%); }
+.vp-dlg-thumb + .vp-dlg-body { left: 46.4vw; transform: none; }
+.vp-dlg-text { line-height: 3.15vh; text-shadow: 0 1px 3px rgba(0,0,0,0.7); white-space: nowrap; }
+.vp-dlg-opts { display: flex; justify-content: center; gap: 6.3vw; margin-top: 6.5vh; }
+.vp-dlg-opt { opacity: 0.92; text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
+.vp-dlg-opt.sel { opacity: 1; font-weight: 600; animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.vp-dlg-foot { position: absolute; left: 37.7vw; top: 84vh; transform: translateY(-50%); display: flex; gap: 18.1vw; }
+.vp-dlg-foot > span { display: inline-flex; align-items: center; gap: 0.75vw; }
+.vp.dlg .vp-status, .vp.dlg .vp-box, .vp.dlg .vp-bottom, .vp.dlg .vp-top, .vp.dlg .vp-cluster { display: none; }
+/* Subtitle Options list over the video */
+body.vp-form .form { z-index: 85; }
+
+/* Music Player: Delete confirmation (same screen as the Video Player's) */
+.musicplayer.dlg > :not(.mp-dlg-host) { visibility: hidden; }
+.mp-dlg-host { position: absolute; inset: 0; z-index: 5; }
+.mp-dlg-host .vp-dlg { background: rgba(0,0,0,0.25); }
+.mp-note { position: absolute; left: 6.4vw; top: 72vh; z-index: 4; }
+.musicplayer .vp-box { color: #fff; }
+
+/* ---------- game options (△) panel — Game captures (E3363-E3366) ---------- */
+.gamemenu { position: fixed; inset: 0; z-index: 60; display: none; pointer-events: none; }
+.gamemenu.show { display: block; }
+/* no background: a lighter area right of a thin line at x 1253; over the
+   game's background: a stripe fading to the right. Both in the Background
+   Color, lighter (--menu-rgb, set with the colour) */
+.gamemenu::before { content: ""; position: absolute; top: 0; bottom: 0; left: 65.3vw; right: 0;
+  background: linear-gradient(90deg, rgba(var(--menu-rgb, 255,255,255),0.3) 0%, rgba(var(--menu-rgb, 255,255,255),0.2) 35%, rgba(var(--menu-rgb, 255,255,255),0.16) 100%); }
+.gm-line { position: absolute; top: 0; bottom: 0; left: 65.3vw; width: 1px; background: rgba(255,255,255,0.75);
+  box-shadow: 0 0 0.4vh rgba(255,255,255,0.4); }
+.gamemenu.bg::before { background: linear-gradient(90deg, rgba(var(--menu-rgb, 200,80,60),0.85) 0%, rgba(var(--menu-rgb, 200,80,60),0.6) 40%, rgba(var(--menu-rgb, 200,80,60),0) 100%);
+  right: auto; width: 17vw; }
+.gamemenu.bg .gm-line { opacity: 0.45; }
+.gm-top { position: absolute; left: 66.2vw; top: 31.7vh; }
+.gm-lower { position: absolute; left: 66.2vw; top: 51.5vh; }
+.gm-item { position: relative; height: 3.4vh; width: 17.6vw; display: flex; align-items: center; gap: 0.35vw;
+  font-size: 2.25vh; white-space: nowrap; text-shadow: 0 0.12vh 0.35vh rgba(0,0,0,0.45); pointer-events: auto; cursor: pointer; }
+.gm-item + .gm-item { margin-top: 0; }
+.gm-top .gm-item:nth-child(2) { margin-top: 0.35vh; }
+.gm-item.sel .gm-label { animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.gm-item.cur .gm-label::after { content: " \2713"; }
+.gm-item.gm-head { opacity: 0.8; }
+.gm-sq { height: 1.7vh; width: auto; }
+.gm-plus { height: 1.8vh; width: auto; }
+.gm-arrow { position: absolute; left: 18vw; height: 1.35vh; width: auto; filter: drop-shadow(0 0.1vh 0.2vh rgba(0,0,0,0.4)); }
+.gm-more { display: block; height: 1.1vh; width: auto; margin-left: -0.3vw; }
+/* the console's Color menu (Theme Settings capture): the rule at x 1325, the
+   options in one column from y 147 @1080: "Original" as text, then 27 px
+   squares 40 px apart with a soft shadow, Custom Color… at the end */
+.gamemenu.swatches::before, .gamemenu.swatches .gm-line { left: 69vw; }
+/* every option menu inside Settings: the same rule position */
+.gamemenu.setline::before, .gamemenu.setline .gm-line { left: 69vw; }
+.gamemenu.setline .gm-lower { left: 69.9vw; }
+.gamemenu.setline .gm-item { width: 13.9vw; }
+.gm-swatch-list { position: absolute; left: 69.8vw; top: 12.4vh; }
+.gamemenu.swatches .gm-item { height: 3.7vh; width: auto; }
+.gm-swatch { display: block; width: 2.5vh; height: 2.5vh; box-shadow: 0.25vh 0.3vh 0.35vh rgba(0,0,0,0.55);
+  transition: transform .15s ease, box-shadow .15s ease; }
+/* the focused square: a little bigger, glowing in time with the titles */
+.gm-item.gm-sw.sel .gm-swatch { transform: scale(1.18); animation: swatchGlow 3.4s ease-in-out infinite; }
+@keyframes swatchGlow {
+  0%, 100% { box-shadow: 0.25vh 0.3vh 0.35vh rgba(0,0,0,0.55), 0 0 0.3vh rgba(255,255,255,0.4); }
+  50% { box-shadow: 0.25vh 0.3vh 0.35vh rgba(0,0,0,0.55), 0 0 0 0.2vh rgba(255,255,255,0.9), 0 0 1.4vh rgba(255,255,255,0.75); }
+}
+.gm-more.up { position: absolute; top: -1.6vh; }
+/* an entry that can't be used right now (Auto Sign-In Off once used, IMG_3600) */
+/* (the same dimmed look as Save Password when Auto Sign-In is on: dark words,
+   still glowing when the cursor is on them) */
+.gm-item.dis .gm-label { color: rgba(48,52,58,0.78); text-shadow: 0 0.1vh 0.25vh rgba(255,255,255,0.22); }
+.gm-item.dis.sel .gm-label { animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+/* a △ panel open: the background behind the XMB goes blurred */
+.tri-blur { position: fixed; inset: 0; z-index: 5; pointer-events: none; display: none;
+  backdrop-filter: blur(1.11vh); -webkit-backdrop-filter: blur(1.11vh); }
+body:has(.gamemenu.show) .tri-blur { display: block; }
+/* the black-screen fix: the full-screen menus (and the △ panel) no longer blur
+   what's behind them with backdrop-filter (WebView2 could lose that picture
+   and show black when the background finished loading under an open menu);
+   the background layers themselves are blurred instead, slightly enlarged so
+   the blurred edges don't darken */
+#p3tbg, #wallpaper, #bgtint, #overlay, #wavegl, #wave { transition: filter .25s ease, scale .25s ease; }
+/* (the Music Player shows the background as it is, like the Visualizer Wave;
+   its own dialogs, such as Delete, blur it like the other dialogs) */
+body:is(.menu-open, :has(.loading.show), :has(.colorpick.show), :has(.browser.show)):not(.pv-open):not(.video-open):not(.mpvis):not(.nomenublur):not(:has(.musicplayer.show:not(.dlg))) :is(#p3tbg, #wallpaper, #bgtint, #overlay, #wavegl, #wave) {
+  filter: blur(16px); scale: 1.04; }
+body:has(.gamemenu.show):not(.menu-open):not(.pv-open):not(.video-open):not(.mpvis):not(.nomenublur):not(:has(.musicplayer.show:not(.dlg))) :is(#p3tbg, #wallpaper, #bgtint, #overlay, #wavegl, #wave) {
+  filter: blur(1.11vh); scale: 1.03; }
+body:is(.menu-open, :has(.loading.show), :has(.colorpick.show), :has(.browser.show), :has(.gamemenu.show)):not(.pv-open):not(.video-open):not(.mpvis) :is(.form, .loading, .colorpick, .browser, .gamedlg .vp-dlg, .tri-blur) {
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+body.nomenublur .tri-blur { display: none !important; }
+/* Sort By / Group Content mini menus (0738C2ED, IMG_3551 / IMG_3552): the panel
+   (and the XMB with it) moves left so its rule sits at x 930; the options
+   open in a second panel whose rule is at x 1320, the option in use level with
+   its row, ◄ beside the row; the band behind the game goes */
+/* (the panel's shading moves with its rule and its words, in one go: they're
+   drawn again in their new place at once, and a shading sliding over on its
+   own lagged behind them for a moment, its edge out of line) */
+.gamemenu::before, .gamemenu .gm-line, .gm-top, .gm-lower { transition: none; }
+/* (the first panel's shading fades out before the second panel's rule) */
+.gamemenu.sub::before { left: 48.44vw; right: auto; width: 15.6vw;
+  background: linear-gradient(90deg, rgba(var(--menu-rgb, 255,255,255),0.3) 0%, rgba(var(--menu-rgb, 255,255,255),0.18) 45%, rgba(var(--menu-rgb, 255,255,255),0) 100%); }
+.gamemenu.sub.bg::before { width: 15.6vw;
+  background: linear-gradient(90deg, rgba(var(--menu-rgb, 200,80,60),0.85) 0%, rgba(var(--menu-rgb, 200,80,60),0.6) 40%, rgba(var(--menu-rgb, 200,80,60),0) 100%); }
+.gamemenu.sub .gm-line { left: 48.44vw; }
+.gamemenu.sub .gm-line.gm-line2 { left: 68.75vw; }
+.gamemenu.sub .gm-top, .gamemenu.sub .gm-lower { left: 49.34vw; }
+.gamemenu.sub .gm-arrow { display: none; }
+.gm-sub-bg { position: absolute; top: 0; bottom: 0; left: 68.75vw; right: 0;
+  background: linear-gradient(90deg, rgba(var(--menu-rgb, 255,255,255),0.3) 0%, rgba(var(--menu-rgb, 255,255,255),0.2) 35%, rgba(var(--menu-rgb, 255,255,255),0.16) 100%); }
+.gamemenu.bg .gm-sub-bg { right: auto; width: 17vw;
+  background: linear-gradient(90deg, rgba(var(--menu-rgb, 200,80,60),0.85) 0%, rgba(var(--menu-rgb, 200,80,60),0.6) 40%, rgba(var(--menu-rgb, 200,80,60),0) 100%); }
+.gm-subl { position: absolute; left: 69.65vw; }
+.gm-subl .gm-item { height: 3.7vh; width: 15vw; }
+.gm-tri { font-size: 1.5vh; margin-left: 0.45vw; position: relative; top: -0.15vh; }
+.gm-back { position: absolute; left: 66.9vw; height: 1.35vh; width: auto; margin-top: 1.02vh; transform: scaleX(-1);
+  filter: drop-shadow(0 0.1vh 0.2vh rgba(0,0,0,0.4)); }
+body.gm-sub #xmb { transform: translateX(-16.86vw); }
+/* (the game's background stays where it is: only the menu moves) */
+body.gm-sub #xmb .bg-layer { transform: translateX(16.86vw); }
+body.gm-sub #infobox { opacity: 0; transition: opacity .2s ease; }
+body.gm-sub .item.gm-band::before { display: none; }
+/* Delete (game options), IMG_3553: the Photo Viewer's confirmation layout
+   over the blurred system background (no dark tint) */
+.gamedlg { position: fixed; inset: 0; z-index: 72; display: none; color: var(--text, #fff); }
+.gamedlg.show { display: block; }
+.gamedlg .vp-dlg { background: rgba(0,0,0,0.1); }
+.gamedlg .vp-dlg-foot > span { cursor: pointer; }
+.gamedlg .vp-dlg-opt { cursor: pointer; }
+.gamedlg .pv-dlg-thumb.gd-stock img { max-width: 62%; max-height: 62%; }
+body.nomenublur .gamedlg .vp-dlg { background: rgba(6,8,14,0.55); }
+/* the layout of IMG_3598 / IMG_3599 / IMG_3601: the picture centred at 34.2 %
+   (its name 11.5 % below it), the question's lines left-aligned in a block
+   centred at 65.5 % and level with the picture, Yes / No centred under it */
+.gamedlg .ud-dlg .vp-dlg-thumb.pv-dlg-thumb { left: 34.2vw; top: 50.3vh; width: 10.2vw; height: 10.5vh; }
+.gamedlg .ud-dlg .pv-dlg-meta { left: 34.2vw; top: 61.8vh; transform: translate(-50%, -50%); font-size: 1.95vh; line-height: 2.8vh; }
+.gamedlg .ud-dlg .pv-dlg-meta + .vp-dlg-body, .gamedlg .ud-dlg .vp-dlg-thumb + .vp-dlg-body { left: 65.5vw; top: 46.3vh; transform: translateX(-50%); }
+.gamedlg .ud-dlg .vp-dlg-text { font-size: 2.05vh; line-height: 3.15vh; text-align: left; }
+.gamedlg .ud-dlg .vp-dlg-opts { justify-content: center; padding: 0; gap: 0; margin-top: 3.2vh; }
+.gamedlg .ud-dlg .vp-dlg-opt { width: 7.6vw; text-align: center; font-size: 2.05vh; line-height: 3.15vh; }
+/* the selected game while the panel is open: its name and its console badge
+   are hidden */
+.item.gm-open .item-label, .item.gm-open .game-fmt { opacity: 0 !important; }
+/* Game Options Band: a see-through black band behind the game's icon and name
+   (IMG_3374); the name stays */
+.item.gm-band::before { content: ""; position: absolute; left: var(--band-l, -0.5vw); top: var(--band-t, -0.55vh); height: var(--band-h, 20vh); width: var(--band-w, 40vw);
+  background: rgba(0,0,0,0.06); z-index: -1; pointer-events: none;
+  /* centred on the screen; it fades in from the picture's right edge to its
+     left end, and the same way (mirrored) out to its right end behind the panel */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--band-f, 12%), #000 calc(100% - var(--band-f, 12%)), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 var(--band-f, 12%), #000 calc(100% - var(--band-f, 12%)), transparent 100%); }
+/* (IMG_3678 -> IMG_3679: with the panel open the game's picture grows 1.36 x
+   about its middle and its name, date and console badge move 3.42 % of the
+   screen to the right, the name's size unchanged) */
+.item.item-game .art-frame { transition: width 0.24s ease, scale 0.2s ease; }
+.item.item-game .item-label, .item.item-game .game-fmt { transition: translate 0.2s ease, opacity .35s ease, margin-left .24s ease; }
+.item.item-game.gm-band .art-frame { scale: 1.36; }
+.item.item-game.gm-band .item-label, .item.item-game.gm-band .game-fmt { translate: 3.42vw 0; }
+/* (and, over the system's own background, not a game's picture: the other
+   categories' icons go blurred and the selected one's name hides) */
+body:has(.gamemenu.show:not(.bg)):not(.nomenublur) .cat:not(.sel) { filter: blur(0.4vh); transition: filter .2s ease; }
+body:has(.gamemenu.show:not(.bg)) .cat.sel .cat-label { opacity: 0; }
+/* Hide Game Title on Background: the name fades once the game's background is up */
+.item.bg-notitle .item-label, .item.bg-notitle .game-fmt { opacity: 0 !important; transition: opacity .4s ease; }
+/* console badge (Console in game.json): on the right of the selected game,
+   on its date line (capture x 1252, y 537 for a title at x 836) */
+.item .game-fmt { position: absolute; left: calc(50% + 31.9vw); top: calc(50% + 3vh); transform: translateY(-50%);
+  height: 2.3vh; width: auto; display: none; pointer-events: none; }
+.item.sel .game-fmt { display: block; }
+.item .game-fmt-txt { width: 9.04vh; background: center / 100% 100% no-repeat; }
+.game-fmt-txt > span { position: absolute; left: 3.6%; width: 79.1%; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 1.35vh; font-weight: 700; color: #eceef2; white-space: nowrap; overflow: hidden; text-shadow: 0 0.12vh 0.15vh rgba(0,0,0,0.75); }
+
+/* ---------- game Information screen (E3367 / E3368) ---------- */
+.gameinfo { position: fixed; inset: 0; z-index: 70; display: none; }
+.gameinfo.show { display: block; }
+.gameinfo::before, .gameinfo::after { content: ""; position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.85); }
+.gameinfo::before { top: 20vh; } .gameinfo::after { top: 79.6vh; }
+.gi2-icon { position: absolute; left: 50vw; top: 35vh; transform: translate(-50%, -50%); height: 13vh; max-width: 18vw; object-fit: contain; }
+.gi2-rows { position: absolute; left: 0; right: 0; top: 47.4vh; }
+.gi2-row { height: 3.5vh; display: flex; align-items: center; font-size: 2.3vh; text-shadow: 0 0.12vh 0.35vh rgba(0,0,0,0.45); }
+.gi2-k { width: 50vw; text-align: right; padding-right: 0.55vw; box-sizing: border-box; white-space: nowrap; }
+.gi2-v { white-space: nowrap; padding-left: 0.45vw; }
+.gi2-scroll { position: absolute; left: 18.3vw; top: 45.8vh; height: 29vh; width: 0.45vw; }
+.gi2-track { position: absolute; inset: 0; background: rgba(255,255,255,0.3); border-radius: 0.2vw; }
+.gi2-thumb { position: absolute; left: 0; right: 0; background: #fff; border-radius: 0.2vw; box-shadow: 0 0 0.4vh rgba(255,255,255,0.6); }
+.gi2-arr { position: absolute; left: 50%; transform: translateX(-50%); height: 1vh; width: auto; }
+.gi2-arr.up { top: -1.5vh; } .gi2-arr.dn { bottom: -1.5vh; }
+.gi2-note { position: absolute; left: 0; right: 0; top: 76.9vh; text-align: center; font-size: 1.72vh; text-shadow: 0 0.12vh 0.35vh rgba(0,0,0,0.45); }
+.gi2-foot { position: absolute; left: 0; right: 0; top: 84vh; transform: translateY(-50%); display: flex; justify-content: center; gap: 13vw; font-size: 2.1vh; }
+.gi2-foot > span { display: inline-flex; align-items: center; gap: 0.6vw; }
+body:has(.musicplayer.show) .form.show { z-index: 86; }
+
+/* Theme Settings > Text Color: the menu text, the info box's date / time and
+   friend count, and the music / video player text (cards and bubbles keep theirs) */
+:root.tc-custom #xmb .item-label, :root.tc-custom #xmb .cat-label, :root.tc-custom #xmb .d-sub,
+:root.tc-custom #xmb .item-detail, :root.tc-custom #xmb .media-sort, :root.tc-custom .gamemenu, :root.tc-custom .gameinfo,
+:root.tc-custom .sidemenu, :root.tc-custom .ib-count, :root.tc-custom .ib-dt,
+:root.tc-custom .vp, :root.tc-custom .musicplayer .vp-box, :root.tc-custom .musicplayer { color: var(--text); }
+/* Theme Settings > Info Box Color: only the box's lines and the clock */
+:root.ib-custom .ib-box { border-color: color-mix(in srgb, var(--ib-color) 55%, transparent);
+  box-shadow: inset 1px 1px 5px color-mix(in srgb, var(--ib-color) 30%, transparent), inset 1px -1px 5px color-mix(in srgb, var(--ib-color) 30%, transparent); }
+/* the clock icon: its own Clock Color (the Info Box Color leaves it as it is) */
+:root.clk-custom .ib-clock { color: var(--clock-color); }
+
+/* A font chosen in Theme Settings has no bold face, so the browser would make
+   one (synthetic bold). With detailed fonts (thousands of points per letter)
+   that is redrawn on every frame of the title glow and slows everything down,
+   so the bold look is drawn with a thin outline in the text's colour instead. */
+:root.user-font { font-synthesis: none; }
+:root.user-font :is(.item.sel .il-title, .il-vsub, .d-title, .d-sub.d-warn, .d-warn-text, .dp-title, .gi-title, .form-title,
+  .mp-meta .mp-title, .pc-id, .vp-dlg-opt.sel, .fc-level) { -webkit-text-stroke: 0.025em currentColor; }
+
+/* playlist pickers as a thumbnail grid (Photo Gallery style): a tick box on
+   each thumbnail and the file's name under it */
+.form.lpgrid .avpick-grid { row-gap: 6.2vh; padding-bottom: 3vh; }
+.form.lpgrid .avpick-av { object-fit: contain; background: rgba(0,0,0,0.25); }
+.lpg-none { background: rgba(255,255,255,0.08) url('./assets/icons/system/default_music.png') center / 60% no-repeat; }
+.lpg-font { display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.08); color: #fff; font-size: calc(5.2vh * var(--font-scale, 1)); line-height: 1; }
+.lpg-check { position: absolute; left: 0.4vh; top: 0.4vh; width: 2.6vh; height: 2.6vh; filter: drop-shadow(0 0.1vh 0.3vh rgba(0,0,0,0.7)); }
+.lpg-label { position: absolute; left: -0.6vw; right: -0.6vw; top: 100%; margin-top: 0.6vh; text-align: center; font-size: 1.45vh;
+  line-height: 1.25; max-height: 3.7vh; overflow: hidden; word-break: break-word; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.6); }
+
+/* custom sections: their own pictures as section / subsection icons, whole */
+img.sysicon.customicon { background: none; -webkit-mask: none; mask: none; object-fit: contain; display: block; }
+/* custom section icons with the section's Icon Effects (sections.js _secIcon):
+   .custmask = the picture's shape filled like the other icons (Icon Color +
+   Icon Style), .cust-flat = Icon Color without the style's shading,
+   .custwrap = the picture's own colours with the style's gloss over them,
+   .cust-solid = Transparency off */
+.sysicon.custmask.cust-flat { background: var(--icon-color) !important; }
+.sysicon.custwrap { position: relative; background: none !important; -webkit-mask: none !important; mask: none !important; }
+.custwrap .cust-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.custwrap .cust-gloss { position: absolute; inset: 0; pointer-events: none;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: contain; mask-size: contain; mix-blend-mode: screen;
+  background: linear-gradient(180deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.16) 28%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.08) 56%, rgba(255,255,255,0) 100%); }
+:root[data-icons="flat"] .custwrap .cust-gloss { display: none; }
+:root[data-icons="glossy"] .custwrap .cust-gloss { background: linear-gradient(160deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.25) 30%, rgba(255,255,255,0) 60%); }
+:root[data-icons="inverted"] .custwrap .cust-gloss { mix-blend-mode: multiply;
+  background: linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 45%, rgba(170,170,170,1) 100%); }
+.sysicon.cust-solid { opacity: 1 !important; filter: none !important; }
+/* a custom picture shaded with the Icon Style (_shadeCustomIcons): the shaded
+   picture alone; with the Flat style and the Icon Color, its shape in that colour */
+.custwrap.cs-ready .cust-gloss { display: none; }
+:root[data-icons] .sysicon.custwrap { background: none !important; }
+:root[data-icons="flat"] .custwrap.cs-tint .cust-img { opacity: 0; }
+:root[data-icons="flat"] .custwrap.cs-tint .cust-gloss { display: block; mix-blend-mode: normal; background: var(--icon-color); }
+/* moving a section into place: it pulses, and wobbles away from the way it moves */
+.cat.placing .sysicon { animation: secPulse 1.6s ease-in-out infinite; }
+@keyframes secPulse { 0%, 100% { filter: drop-shadow(0 0 0.4vh rgba(255,255,255,0.35)); } 50% { filter: drop-shadow(0 0 1.8vh rgba(255,255,255,0.95)); } }
+/* it hangs from its top edge: moving it swings it back against the move, then
+   it sways to and fro, smaller each time, and settles */
+.cat .sysicon.wob-r, .cat .sysicon.wob-l { transform-origin: 50% 0%; }
+.cat .sysicon.wob-r { animation: secWobR 1.5s linear, secPulse 1.6s ease-in-out infinite; }
+.cat .sysicon.wob-l { animation: secWobL 1.5s linear, secPulse 1.6s ease-in-out infinite; }
+@keyframes secWobR { 0% { rotate: 0deg; animation-timing-function: ease-out; } 12% { rotate: 22deg; animation-timing-function: ease-in-out; }
+  32% { rotate: -14deg; animation-timing-function: ease-in-out; } 52% { rotate: 8deg; animation-timing-function: ease-in-out; }
+  70% { rotate: -4.5deg; animation-timing-function: ease-in-out; } 86% { rotate: 2deg; animation-timing-function: ease-in-out; } 100% { rotate: 0deg; } }
+@keyframes secWobL { 0% { rotate: 0deg; animation-timing-function: ease-out; } 12% { rotate: -22deg; animation-timing-function: ease-in-out; }
+  32% { rotate: 14deg; animation-timing-function: ease-in-out; } 52% { rotate: -8deg; animation-timing-function: ease-in-out; }
+  70% { rotate: 4.5deg; animation-timing-function: ease-in-out; } 86% { rotate: -2deg; animation-timing-function: ease-in-out; } 100% { rotate: 0deg; } }
+
+/* the loading screen while a background / overlay video converts */
+
+/* low performance mode (out of focus / in a game): every animation holds still */
+/* low performance mode (out of focus / in a game): every animation holds
+   still, except the loading icons and the clock box (and what's in it) */
+body.lowpower *, body.lowpower *::before, body.lowpower *::after { animation-play-state: paused !important; }
+body.lowpower :is(.d-spin, .loading-spin, #infobox, #infobox *, #infobox *::before, #infobox *::after) { animation-play-state: running !important; }
+
+/* loading: only the background and the clock (its hands sweeping round); the
+   XMB and the rest of the info box fade back in once it's done */
+.ib-dt { transition: opacity .45s ease; }
+.ib-box { transition: width .55s cubic-bezier(.22,.8,.3,1), border-color .45s ease, box-shadow .45s ease, background-color .45s ease; }
+body.clock-loading .xmb { opacity: 0 !important; pointer-events: none !important; transition: opacity .2s ease; }
+body.clock-loading .ib-dt, body.clock-loading .ib-profile { opacity: 0 !important; }
+body.clock-loading .ib-box { border-color: transparent !important; box-shadow: none !important; background-color: transparent !important; }
+
+/* Icon Color on the Music Player, Video Player and Photo Viewer icons (not the
+   format badges, the progress bar or the button glyphs) */
+.mp2-btn .mpi, .mp2-st, .vp-st, .vp-st-rep { filter: url(#icon-tint); }
+.vp-st-num { filter: url(#icon-tint) drop-shadow(0 0 0.6px rgba(0,0,0,0.5)) drop-shadow(1.5px 2px 1px rgba(0,0,0,0.75)); }
+.vp-filmicon, .vp-box img, .vp-arrows img, .vp-ssbtn, .vp-gup, .vp-gdn { filter: url(#icon-tint); }
+/* Text Color: the Volume Control's label and its - / + too (both players) */
+:root.tc-custom .mp2-vol, :root.tc-custom .mp2-vlabel, :root.tc-custom .mp2-vminus, :root.tc-custom .mp2-vplus { color: var(--text); }
+
+/* ---------- Photo Viewer (PS3 captures, 1920x1080) ---------- */
+.pv { position: absolute; inset: 0; overflow: hidden; background: #000; color: #fff; }
+.pv-stage { position: absolute; inset: 0; overflow: hidden; }
+.pv-img { position: absolute; left: 50%; top: 50%; max-width: none; max-height: none; user-select: none; -webkit-user-drag: none; }
+/* the control panel: icons on a 64 px pitch, rows 66 px apart, centred on
+   x 515, first row at y 438, the focused icon's name at y 642 */
+.pv-cluster { left: 26.8vw; top: 37.4vh; }
+.pv-cluster .mp2-btn.btn-off { opacity: 0.35; }
+.pv-cluster .mp2-crow { height: 6.6vh; margin-bottom: -0.55vh; }
+.pv-cluster .mp2-sub { margin-top: 2.3vh; }
+/* option lists (Display Mode, Change Effect, Slideshow Style / Speed) */
+.pv-pop { display: none; margin: 1.2vh auto 0; width: max-content; min-width: 9vw; padding: 0.6vh 1.6vw 0.8vh;
+  background: rgba(10,10,10,0.9); border: 1px solid rgba(255,255,255,0.12); }
+.pv-pop.on { display: block; }
+.pv-popi { font-size: 2.05vh; line-height: 2.75vh; text-align: center; opacity: 0.8; white-space: nowrap; }
+.pv-popi.sel { opacity: 1; animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+/* the lower-left: small picture with the white rectangle, then the status box */
+.pv-nav { position: absolute; left: 5.4vw; top: 74.5vh; transform: translateY(-50%); display: none; }
+.pv-nav.on { display: block; }
+.pv-navbox { position: relative; overflow: hidden; box-shadow: 0 0 0 1px rgba(255,255,255,0.25); background: #000; }
+.pv-navimg { position: absolute; left: 50%; top: 50%; max-width: none; }
+.pv-rect { position: absolute; box-sizing: border-box; border: 2px solid #fff; box-shadow: 0 0 3px rgba(0,0,0,0.6); opacity: 0; transition: opacity .25s ease; }
+.pv-rect.on { opacity: 1; }
+.pv-box { position: absolute; left: 5.2vw; top: 84.6vh; transform: translateY(-50%); display: none; align-items: center; gap: 0.35vw;
+  padding: 0.25vh 0.5vw; font-size: 2vh; background: rgba(0,0,0,0.62); border-radius: 0.35vh; white-space: nowrap; }
+.pv-box.on { display: flex; }
+.pv-box .pv-boxmode { margin-left: 0.6vw; }
+.pv-box img { height: 2.8vh; width: auto; margin-left: -0.3vw; }
+/* the slideshow / previous / next icons (as big as on the console: ~3 vh of
+   glyph; the PNGs carry padding for their shadow) */
+.pv-ss { position: absolute; left: 5.0vw; top: 89.6vh; transform: translateY(-50%); display: none; align-items: center; gap: 0; }
+.pv-ss.on { display: flex; }
+.pv-ss img { height: 6.6vh; width: auto; margin-right: -1.2vh; }
+.pv-ss img.pv-ssrep { height: 6.6vh; }
+/* Display: the details panel on the right, then the top bar */
+.pv-info { position: absolute; left: 57.6vw; top: 21.4vh; width: 33.5vw; height: 58.6vh; padding: 1.4vh 0; box-sizing: border-box;
+  background: rgba(0,0,0,0.78); display: none; }
+.pv-info.on { display: block; }
+.pv-irow { display: flex; font-size: 1.86vh; line-height: 3.42vh; white-space: nowrap; }
+.pv-ik { width: 47%; text-align: right; padding-right: 0.9vw; box-sizing: border-box; }
+.pv-iv { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.pv-top { position: absolute; left: 0; right: 0; top: 0; height: 12.04vh; background: rgba(0,0,0,0.64); display: none; }
+.pv-top.on { display: block; }
+.pv-top > * { position: absolute; top: 9.9vh; transform: translateY(-50%); white-space: nowrap; font-size: 2.1vh; }
+.pv-cam { left: 4.9vw; height: 2.7vh; width: auto; }
+.pv-name { left: 6.9vw; max-width: 55vw; overflow: hidden; text-overflow: ellipsis; }
+.pv-count { right: 5vw; }
+/* Trimming / Set as Wallpaper: the white rectangle, title above, buttons below */
+.pv-crop { position: absolute; inset: 0; display: none; pointer-events: none; }
+.pv-crop.on { display: block; }
+.pv-crop-rect { position: absolute; box-sizing: border-box; border: 2px solid #fff; box-shadow: 0 0 0 100vmax rgba(0,0,0,0.35), 0 0 4px rgba(0,0,0,0.6); }
+.pv-crop-title { position: absolute; left: 50%; transform: translate(-50%, -135%); font-size: 2.1vh; text-shadow: 0 1px 3px rgba(0,0,0,0.8); white-space: nowrap; }
+.pv-crop-foot { position: absolute; left: 50%; transform: translate(-50%, 0.5vh); display: flex; gap: 18vw; font-size: 2.1vh; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.pv-crop-foot > span { display: inline-flex; align-items: center; gap: 0.6vw; }
+.pv.cropping .pv-cluster, .pv.cropping .pv-info, .pv.cropping .pv-top { display: none; }
+.pv.dlg .pv-cluster, .pv.dlg .pv-nav, .pv.dlg .pv-box, .pv.dlg .pv-ss, .pv.dlg .pv-info, .pv.dlg .pv-top, .pv.dlg .pv-crop { display: none; }
+/* Photo Viewer confirmations (IMG_3484): the whole picture in a box on the
+   left (see-through where the picture is), its name / date / size centred
+   under it, the message and Yes / No well to the right */
+.pv-dlg { background: rgba(0,0,0,0.5); }
+.vp-dlg-thumb.pv-dlg-thumb { left: 35.2vw; top: 50.3vh; width: 12.5vw; height: 14vh; transform: translate(-50%, -50%);
+  background: none; overflow: visible; display: flex; align-items: center; justify-content: center; }
+.vp-dlg-thumb.pv-dlg-thumb img { width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
+.pv-dlg-meta { position: absolute; left: 35.2vw; top: 61.4vh; transform: translateX(-50%); text-align: center; font-size: 2vh; line-height: 3.9vh;
+  white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
+.pv-dlg .vp-dlg-thumb + .vp-dlg-body, .pv-dlg .pv-dlg-meta + .vp-dlg-body { left: 57.5vw; top: 45.4vh; transform: none; }
+.pv-dlg .vp-dlg-opts { justify-content: flex-start; padding-left: 5.5vw; gap: 5.6vw; margin-top: 3.6vh; }
+.pv-layer { position: absolute; inset: 0; pointer-events: none; }
+.pv-layer > * { pointer-events: auto; }
+.pv-box img, .pv-ss img, .pv-cam { filter: url(#icon-tint); }
+:root.tc-custom .pv { color: var(--text); }
+/* Print: only the picture */
+#printarea { display: none; }
+@media print {
+  body > *:not(#printarea) { display: none !important; }
+  #printarea { display: block !important; }
+  #printarea img { display: block; max-width: 100%; max-height: 100vh; margin: 0 auto; }
+}
+body:has(.mediaview.show) .form.show { z-index: 86; }
+
+/* ---------- text entry (capture: "Enter a name for the playlist.") ---------- */
+.form.tfxform { display: block; background: rgba(0,0,0,0.12); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.form.tfxform::before { top: 18.24vh; height: 1px; } .form.tfxform::after { top: 81.4vh; height: 1px; }
+.tfx { position: absolute; left: 0; right: 0; top: 27.6vh; display: flex; flex-direction: column; align-items: center; }
+.tfx-prompt { font-size: 2.3vh; line-height: 3vh; text-shadow: 0 1px 3px rgba(0,0,0,0.7); margin-bottom: 0; }
+.tfx-row { display: flex; flex-direction: column; align-items: flex-start; width: 42.2vw; margin-top: 2.2vh; }
+.tfx-row:first-of-type { margin-top: 13.4vh; }
+.tfx-label { font-size: 1.8vh; opacity: 0.8; margin-bottom: 0.5vh; text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
+.tfx-field { display: block; width: 100%; height: 3.6vh; box-sizing: border-box; border-radius: 0.3vh;
+  border: 1px solid rgba(255,255,255,0.35); background: rgba(255,255,255,0.06); transition: background .15s ease, border-color .15s ease; }
+/* the focused field glows all over (the whole bubble lights up and dims, in
+   time with the XMB titles), not just its outline */
+.tfx-field.sel { border: 2px solid rgba(255,255,255,0.92); animation: tfxFill 3.4s ease-in-out infinite; }
+@keyframes tfxFill {
+  0%, 100% { background: rgba(255,255,255,0.14); box-shadow: inset 0 0 0.6vh rgba(255,255,255,0.25), 0 0 0.4vh rgba(255,255,255,0.35); }
+  50% { background: rgba(255,255,255,0.34); box-shadow: inset 0 0 1.4vh rgba(255,255,255,0.6), 0 0 1.4vh rgba(255,255,255,0.9), 0 0 2.6vh rgba(255,255,255,0.45); }
+}
+/* where you are (the field or OK) glows, in time with the XMB titles */
+.tfx-field input { width: 100%; height: 100%; box-sizing: border-box; padding: 0 0.3vw; border: none; outline: none; background: none;
+  font-family: var(--ui-font); font-size: 2.15vh; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.7); }
+.tfx-hint { font-size: 1.7vh; opacity: 0.7; margin-top: 1.2vh; max-width: 42vw; text-align: center; }
+.tfx-btns { display: flex; gap: 2vw; margin-top: 3.4vh; }
+.tfx-btn { min-width: 3.8vw; height: 4.3vh; padding: 0 0.8vw; border-radius: 0.35vh; border: 1px solid rgba(255,255,255,0.45); cursor: pointer;
+  font-family: var(--ui-font); font-size: 2.15vh; color: #f4f4f4; text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  background: linear-gradient(180deg, #a9a9ad 0%, #858589 50%, #6e6e72 100%); opacity: 0.85; }
+/* the focused button glows all over too */
+.tfx-btn.sel, .tfx-btn:hover { opacity: 1; border-color: #fff; animation: tfxBtnFill 3.4s ease-in-out infinite; }
+@keyframes tfxBtnFill {
+  0%, 100% { filter: brightness(1.08); box-shadow: inset 0 0 0.6vh rgba(255,255,255,0.3), 0 0 0.4vh rgba(255,255,255,0.35); }
+  50% { filter: brightness(1.38); box-shadow: inset 0 0 1.6vh rgba(255,255,255,0.75), 0 0 1.4vh rgba(255,255,255,0.9), 0 0 2.6vh rgba(255,255,255,0.45); }
+}
+.tfx-foot { top: 83.8vh; transform: translateY(-50%); gap: 18.2vw; }
+:root.tc-custom .tfx-field input, :root.tc-custom .tfx-btn { color: var(--text); }
+
+/* ---------- Add to Playlist ("Select a playlist.") ---------- */
+.form.plpick { display: block; background: rgba(0,0,0,0.42); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.form.plpick::before { top: 19.3vh; height: 1px; } .form.plpick::after { top: 80.6vh; height: 1px; }
+.plp-item { position: absolute; left: 29.2vw; top: 47.5vh; transform: translate(-50%, -50%); text-align: center; }
+.plp-thumb { display: block; max-width: 13.4vw; max-height: 15vh; margin: 0 auto 1.1vh; object-fit: contain; }
+/* a song without its own cover: the default music picture in the Icon Color */
+.plp-thumb.plp-tint { width: 15vh; height: 15vh; background: var(--icon-color, #fff); -webkit-mask: var(--plp-mask) center/contain no-repeat; mask: var(--plp-mask) center/contain no-repeat; }
+.plp-name, .plp-date { font-size: 2vh; line-height: 2.8vh; white-space: nowrap; }
+.plp-title { position: absolute; left: 50%; top: 35.4vh; transform: translate(-50%, -50%); font-size: 2.2vh; white-space: nowrap; }
+.plp-list { position: absolute; left: 46.4vw; top: 41vh; }
+.plp-row { display: flex; align-items: center; gap: 1.2vw; height: 11.6vh; cursor: pointer; opacity: 0.8; }
+.plp-row.sel { opacity: 1; }
+.plp-icon { width: 6.2vh; height: 6.2vh; object-fit: contain; filter: url(#icon-tint); }
+.plp-label { font-size: 2.4vh; white-space: nowrap; }
+.plp-row.sel .plp-label { animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+/* (no shadows anywhere in the playlist picker) */
+.form.plpick :not(.plp-label) { text-shadow: none !important; }
+.plp-sub { font-size: 1.7vh; opacity: 0.85; }
+.plp-more { position: absolute; left: 2.6vh; height: 1.1vh; }
+.plp-more.up { top: -1.6vh; } .plp-more.dn { bottom: -1.2vh; }
+
+/* ---------- picture folders: the grid (captures: 5 columns 243 px apart) ---------- */
+.item-col.grid .item.grid-cell { transition: left 0.22s ease, top 0.22s ease; }
+.item-col.grid .item.grid-cell .art-frame.photo-thumb { display: flex; align-items: center; justify-content: center;
+  aspect-ratio: auto; background: none; box-shadow: none; overflow: visible; transition: width .2s ease, height .2s ease; }
+.item-col.grid .item.grid-cell .art-frame.photo-thumb .art-img { max-width: none; max-height: none; object-fit: fill;
+  inset: auto; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  box-shadow: none; outline: none; filter: none; transition: width .2s ease, height .2s ease; }
+/* the selected picture's frame: see-through, a little bigger than the picture,
+   glowing in time with the title (same 3.4 s cycle, started together) */
+.item-col.grid .grid-hl { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; pointer-events: none;
+  box-sizing: border-box; border: 1px solid rgba(255,255,255,0.7); border-radius: 0.25vh; background: rgba(255,255,255,0.16); }
+.item-col.grid .item.grid-cell.sel .grid-hl { display: block; animation: gridHlGlow 3.4s ease-in-out infinite; }
+@keyframes gridHlGlow {
+  0%, 100% { background: rgba(255,255,255,0.12); box-shadow: 0 0 0.4vh rgba(255,255,255,0.35); border-color: rgba(255,255,255,0.55); }
+  50% { background: rgba(255,255,255,0.24); box-shadow: 0 0 1.2vh rgba(255,255,255,0.95), 0 0 2.2vh rgba(255,255,255,0.5); border-color: rgba(255,255,255,0.95); }
+}
+.item-col.grid .item.grid-cell .item-label { display: none; }
+.item-col.grid .item.grid-cell.sel .item-label { display: block; margin-left: 0; transform: none; white-space: nowrap; }
+.item-col.grid .item.grid-cell.sel .il-title { font-size: 2.2vh; line-height: 2.6vh; }
+.item-col.grid .item.grid-cell.sel .il-body .d-sub { font-size: 1.75vh; }
+
+/* Game mode: the app stays full screen (black) behind the game and draws
+   nothing at all, every animation stopped, until the game has ended */
+body.in-game *, body.in-game *::before, body.in-game *::after { animation-play-state: paused !important; transition: none !important; }
+body.in-game > :not(#fadeblack) { visibility: hidden !important; }
+/* Icon Color "Original": the icons inside the media players stay white */
+:root[data-icon-auto] :is(.mp-art, .mp2-art, #mediaview, #musicplayer) .sysicon { background: #fff !important; }
+
+/* a long job not started from an option on screen (new games found when the
+   Game column opened): loading icon, counter and warning in a box; the menu
+   waits until it's done */
+#lockbox { position: fixed; inset: 0; z-index: 60; display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.45); color: #fff; }
+#lockbox.show { display: flex; }
+#lockbox .lb-panel { min-width: 34vw; max-width: 52vw; padding: 2.4vh 2.2vw; border-radius: 0.6vh;
+  background: rgba(10,10,10,0.82); border: 1px solid rgba(255,255,255,0.25); box-shadow: 0 1vh 3vh rgba(0,0,0,0.35); }
+#lockbox .lb-title { font-size: var(--title-size, 2.94vh); font-weight: 600; line-height: 3.6vh; animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+#lockbox .lb-sub { font-size: 1.86vh; line-height: 1.32; margin-top: 0.6vh; opacity: 0.9; }
+
+/* a theme's icon in its own colours (its Icon Color option off): shown as the
+   picture while its shading is made, and as it is with Icon Style Flat */
+.sysicon.themeown.xs-late, :root[data-icons="flat"] .sysicon.themeown {
+  background: var(--tsrc) center/contain no-repeat !important; -webkit-mask: none !important; mask: none !important; }
+
+/* a PS3 theme's notification box (its picture, stretched from the middle) */
+:root.tnotify .shot-toast { background: none; border: 1.4vh solid transparent; border-radius: 0;
+  border-image: var(--tnotify) 22 fill / 1.4vh stretch; padding: 0.4vh 1vh; }
+
+/* Settings > Power Save Settings > Remove Menu Blur: the full-screen menus dim
+   the background instead of blurring it (redoing a full-screen blur on every
+   frame is heavy without a capable graphics card) */
+body.nomenublur .form, body.nomenublur .form.show, body.nomenublur .loading, body.nomenublur .colorpick, body.nomenublur .browser, body.nomenublur .vp-dlg {
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+body.nomenublur .form, body.nomenublur .loading, body.nomenublur .colorpick { background: rgba(6,8,14,0.55); }
+body.nomenublur .form.avpick { background: rgba(0,6,14,0.55); }
+body.nomenublur .form.plpick { background: rgba(0,0,0,0.42); }
+
+/* Hide HUD (F10): only the background stays (the wave, the theme / wallpaper,
+   the selected item's background); everything else fades out until F10 again */
+body.hud-off > :not(#p3tbg):not(#wallpaper):not(#bgtint):not(#overlay):not(#wavegl):not(#wave):not(#xmb):not(#dim):not(#fadeblack):not(#intro):not(script):not(.shot-flash):not(.shot-toast),
+body.hud-off #xmb > :not(.bg-layer) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.25s ease !important;
+}
+
+/* glowing labels that are scrolling (marquee): the glow as a filter, so the
+   label's clipping box never shows */
+.gm-item.sel .gm-label.mq-run, .plp-row.sel .plp-label.mq-run, .ic-row.cur .ic-rt.mq-run,
+.confirm-opt.sel.mq-run, .pv-popi.sel.mq-run, .vp-dlg-opt.sel.mq-run {
+  animation-name: xmbLabelGlowF;
+}
+
+/* Info Box Color (and a PS3 theme's Info Box Color option): the grey buttons
+   of the menus (Sign In, the list pickers, Cancel / Next…) take that colour,
+   with the same top-lit shading and see-through look */
+:root.ib-custom .ps-btn, :root.ib-custom .ui-btn {
+  background: linear-gradient(180deg,
+    color-mix(in srgb, color-mix(in srgb, var(--ib-color), white 40%) 62%, transparent),
+    color-mix(in srgb, var(--ib-color) 55%, transparent) 55%,
+    color-mix(in srgb, color-mix(in srgb, var(--ib-color), black 15%) 60%, transparent)); }
+:root.ib-custom .tfx-btn {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ib-color), white 25%) 0%, var(--ib-color) 50%,
+    color-mix(in srgb, var(--ib-color), black 25%) 100%); }
+
+/* the button symbols (✕ ○ □ △) as the console's outline pictures (see
+   glyphs.js): one text-height square, sitting on the text's middle, in the
+   colour of the text around them (so the Text Color applies to them too) */
+.gl { display: inline-block; width: 1em; height: 1em; vertical-align: -0.14em; font-weight: normal;
+  background-color: currentColor; -webkit-mask: var(--gl) center / contain no-repeat; mask: var(--gl) center / contain no-repeat; }
+.gl-cross { --gl: url('./assets/icons/system/glyph_cross.png'); }
+.gl-circle { --gl: url('./assets/icons/system/glyph_circle.png'); }
+.gl-square { --gl: url('./assets/icons/system/glyph_square.png'); }
+.gl-triangle { --gl: url('./assets/icons/system/glyph_triangle.png'); }
+
+/* the browser page as a picture behind the on-screen keyboard (the browser
+   window steps aside while the keyboard is up) */
+#browser-snap { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 97; display: none; pointer-events: none; }
+#browser-snap.show { display: block; }
+
+/* the clock at the top right as the loading icon (the Internet Browser while
+   its page loads): the info box shows over the browser screen and both hands
+   go round, the long one quickly */
+body.clock-loading #infobox { visibility: visible !important; z-index: 72; }
+/* (over the black screen before the boot intro) */
+body.boot-loading #infobox { z-index: 95; }
+body.clock-loading #infobox .ib-min { animation: ibClockSpin 0.9s linear infinite; transform-box: view-box; transform-origin: 20px 20px; }
+body.clock-loading #infobox .ib-hour { animation: ibClockSpin 10.8s linear infinite; transform-box: view-box; transform-origin: 20px 20px; }
+@keyframes ibClockSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* a custom section's own picture as its category icon: shown whole in its own
+   shape (never stretched or cut), like a photo used as a User's avatar: the
+   height of a User photo (smaller while not chosen), centred on the icon's spot */
+/* (only a section's own picture: a PS3 theme's / Icon Set's pictures keep the
+   icons' own size) */
+.cat .sysicon.custwrap, .cat img.sysicon.customicon.secpic { width: auto; height: 6.8vh; max-width: 13vh; }
+.cat.sel .sysicon.custwrap, .cat.sel img.sysicon.customicon.secpic { width: auto; height: 10.4vh; max-width: 18.5vh; }
+.cat .sysicon.custwrap { display: block; }
+.cat .custwrap .cust-img { position: static; display: block; width: auto; height: 100%; max-width: inherit; object-fit: contain; }

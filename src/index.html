@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>MaXMB</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body spellcheck="false" class="booting clock-loading boot-loading">
+  <!-- optional theme background (image / GIF / video), behind the wave canvas -->
+  <!-- a PS3 theme's background (its animated scene, or its picture) -->
+  <div id="p3tbg" class="p3tbg"></div>
+  <div id="wallpaper" class="wallpaper"></div>
+  <!-- see-through background colour (custom colour with Opacity < 1) -->
+  <div id="bgtint" class="bgtint"></div>
+  <!-- optional Overlay (transparent image, or green-screen video) over the background -->
+  <div id="overlay" class="overlaylayer"></div>
+  <!-- Real Style Waves: the WebGL2 XMB wave (the only wave style) -->
+  <canvas id="wavegl" class="wavegl"></canvas>
+  <!-- legacy 2D canvas, kept transparent (Real Style Waves owns the background) -->
+  <canvas id="wave"></canvas>
+
+  <!-- top-right info panel: (PSN avatar + friends only when signed in) date time clock -->
+  <div id="infobox" class="infobox"></div>
+
+  <!-- main cross -->
+  <div id="xmb" class="xmb"></div>
+
+  <!-- boot intro -->
+  <!-- (black from the very first moment: the Console Startup Sound starts on a black screen) -->
+  <div id="intro" class="intro"><div class="intro-black"></div></div>
+
+  <!-- right-side options / info (game + user), flat & transparent -->
+  <div id="sidemenu" class="sidemenu"></div>
+
+  <!-- minimal field entry: new-user name, PSN sign-up / sign-in, avatar picker -->
+  <div id="form" class="form"></div>
+
+  <!-- text-free music transport -->
+  <div id="musicplayer" class="musicplayer"></div>
+
+  <!-- fullscreen media viewer (photo / video) -->
+  <div id="mediaview" class="mediaview"></div>
+
+  <!-- in-app browser chrome: a thin controller-hint bar drawn over the pinned,
+       borderless LibreWolf window (the live page is a separate OS window the
+       Rust side positions in the content area). -->
+  <div id="browser" class="browser"></div>
+
+  <!-- fade-to-black held while a launched game starts -->
+  <div id="fadeblack" class="fadeblack"></div>
+
+  <!-- screen brightness dimmer (Display Settings > Brightness) -->
+  <div id="dim" class="dim"></div>
+
+  <!-- post-login loading screen (Turn-Off-System style: top+bottom lines and a
+       big spinning loading icon in the middle) -->
+  <div id="loading" class="loading">
+    <img class="loading-spin" src="./assets/icons/system/loading_icon.png" alt="">
+  </div>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>

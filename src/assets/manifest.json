@@ -1,0 +1,16 @@
+{
+  "sounds": {
+    "cursor_up": "cursor.ogg",
+    "cursor_down": "cursor.ogg",
+    "enter": "enter.ogg",
+    "back": "back.ogg",
+    "error": "enter.ogg",
+    "coldboot": "coldboot.ogg"
+  },
+  "defaults": {
+    "photo": "default_photo.png",
+    "music": "default_music.png",
+    "video": "icon_video_default.png",
+    "game": "default_game.png"
+  }
+}

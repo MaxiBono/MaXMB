@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MaXMB",
+  "version": "1.0.0",
+  "identifier": "com.maxibono.maxmb",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost thumb: http://thumb.localhost data: blob:; media-src 'self' asset: http://asset.localhost blob:; connect-src 'self' asset: http://asset.localhost ipc: http://ipc.localhost blob: data:; font-src 'self' data:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "**"
+        ]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../MaXMB Manual.pdf": "MaXMB Manual.pdf",
+      "resources": "resources",
+      "../content/README.txt": "content/README.txt",
+      "../content/Avatars/PSN": "content/Avatars/PSN",
+      "../content/Photos/Sections": "content/Photos/Sections",
+      "../content/Icon/Flat Icons": "content/Icon/Flat Icons",
+      "../content/Sound Effects/Original Sounds": "content/Sound Effects/Original Sounds",
+      "../content/Sound Effects/PS4 Sounds": "content/Sound Effects/PS4 Sounds"
+    }
+  }
+}
