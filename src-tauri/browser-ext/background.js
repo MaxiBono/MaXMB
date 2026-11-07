@@ -339,6 +339,8 @@ browser.runtime.onMessage.addListener((m, sender) => {
     });
   } else if (m.type === "cursor") {
     post("/xmb/cursor", { mode: m.mode || "normal" });
+  } else if (m.type === "cursorvis") {
+    if (tab.active) post("/xmb/cursorvis", { visible: !!m.visible });
   } else if (m.type === "hover") {
     if (tab.active) post("/xmb/hover", { href: m.href || "" });
   }

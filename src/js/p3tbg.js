@@ -8,6 +8,7 @@
 // shows the still picture until the scene can be drawn (or if WebGL isn't
 // available).
 import { assetUrl } from "./api.js";
+import { readableFrom } from "./chroma.js";
 import { Renderer } from "./p3t/render.js";
 import { Scene } from "./p3t/scene.js";
 
@@ -49,7 +50,7 @@ export class ThemeBackground {
     let still = null;
     if (stillPath) {
       still = document.createElement("img");
-      still.className = "p3t-still"; still.alt = ""; still.src = assetUrl(stillPath);
+      still.className = "p3t-still"; still.alt = ""; readableFrom(still, assetUrl(stillPath)); still.src = assetUrl(stillPath);
       el.appendChild(still);
     }
     el.classList.add("show");
@@ -119,7 +120,8 @@ export class ThemeBackground {
         // (a new Resolution changes the drawing size, not the canvas's)
         onWinResize = () => { if (alive) resize(); };
         window.addEventListener("resize", onWinResize);
-        const draw = (actors) => { cleared = false; renderer.draw(1, actors); };
+        // (the reactive icons' backdrop copies each frame as it's drawn: glasslayer.js)
+        const draw = (actors) => { cleared = false; renderer.draw(1, actors); if (window.__onLayerFrame) window.__onLayerFrame(canvas); };
         const frame = (now) => {
           if (!alive) return;
           // (a game running, or out of sight: looked at again a little later,

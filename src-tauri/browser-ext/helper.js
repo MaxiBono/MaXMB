@@ -191,10 +191,28 @@
     } catch (e) {}
   }
   var rafPending = false, lastTarget = null;
+  // Whether the page wants the pointer seen where it is (not "cursor: none",
+  // as a playing video sets it): the app compares it with what Windows shows,
+  // to bring back a pointer that LibreWolf left hidden (see browser.rs). Told
+  // on a change, and again now and then while the pointer moves (another
+  // frame may have told the opposite meanwhile).
+  var lastVis = null, visAt = 0;
+  function checkVis(el, moved) {
+    if (!el || el.nodeType !== 1 || !el.isConnected) return;
+    var vis = keyword(el) !== "none", now = Date.now();
+    if (vis !== lastVis || (moved && now - visAt > 500)) { lastVis = vis; visAt = now; send({ type: "cursorvis", visible: vis }); }
+  }
+  // (a page hides the pointer by itself too, with no move: a video's controls
+  // fading out; looked at a few times a second while this frame has the pointer)
+  setInterval(function () { if (on && lastTarget && !document.hidden) checkVis(lastTarget, false); }, 250);
+  // (the pointer left this frame, into another one or out of the page: that one tells)
+  document.addEventListener("mouseout", function (e) { if (!e.relatedTarget) { lastTarget = null; lastVis = null; } }, true);
   function update() {
     rafPending = false;
     var el = lastTarget;
-    if (!on || !el || el.nodeType !== 1 || el === grabEl) return;
+    if (!on || !el || el.nodeType !== 1) return;
+    checkVis(el, true);
+    if (el === grabEl) return;
     palmOff();
     if (isGrab(keyword(el))) palmOn(el);
   }

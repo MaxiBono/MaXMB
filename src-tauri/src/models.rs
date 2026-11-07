@@ -20,6 +20,8 @@ pub struct Game {
     #[serde(default)] pub starts: String,
     #[serde(default)] pub is_disc: bool,
     #[serde(default)] pub console: String,
+    /// a PS3 game's Title ID (game.json "titleId"), when known
+    #[serde(default)] pub title_id: String,
     // Game Settings: Game Options Band / Hide Game Title on Background (this
     // game only; None = not chosen yet: the band on, the title shown)
     #[serde(default)] pub options_band: Option<bool>,

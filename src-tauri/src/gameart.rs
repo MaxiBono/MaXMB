@@ -94,16 +94,28 @@ pub fn may_replace(folder: &Path, kind: &str, src: &str) -> bool {
 }
 /// PlayStation®Home (it starts from PSN > PlayStation®Home, with the system's
 /// own look): no art is ever put in its folder by itself.
+/// (its name however written: PlayStation®Home, playstation_home, PS3 Home,
+/// "PlayStation Home (Beta)", "PlayStation Home 1.86", a shortcut's
+/// "PlayStation®Home.lnk"...)
 pub fn is_home_title(t: &str) -> bool {
-    let n: String = t.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase();
-    matches!(n.as_str(), "playstationhome" | "playstation3home" | "pshome" | "ps3home")
+    let t = t.trim();
+    let t = ["lnk", "xmbl", "url", "exe"].iter().find_map(|e| t.to_lowercase().strip_suffix(&format!(".{e}")).map(|_| &t[..t.len() - e.len() - 1])).unwrap_or(t);
+    let mut n: String = t.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>().to_lowercase();
+    let Some(rest) = ["playstation3home", "playstationhome", "ps3home", "pshome"].iter().find_map(|p| n.strip_prefix(p).map(str::to_string)) else { return false };
+    n = rest;
+    // (what may follow: a version, beta / online / offline)
+    for w in ["closedbeta", "openbeta", "beta", "online", "offline", "hen", "v"] { n = n.replace(w, ""); }
+    n.chars().all(|c| c.is_ascii_digit())
 }
+/// PlayStation®Home's Title ID (RPCS3 / PSN)
+pub const HOME_TITLE_IDS: &[&str] = &["NPIA00010"];
 fn meta_of(folder: &Path) -> serde_json::Value {
     fs::read_to_string(crate::library::meta_path(folder)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(serde_json::Value::Null)
 }
 pub fn is_home(folder: &Path) -> bool {
     let v = meta_of(folder);
-    is_home_title(v["title"].as_str().unwrap_or_else(|| folder.file_name().and_then(|n| n.to_str()).unwrap_or("")))
+    v["titleId"].as_str().map(|id| HOME_TITLE_IDS.contains(&id.trim().to_uppercase().as_str())).unwrap_or(false)
+        || is_home_title(v["title"].as_str().unwrap_or_else(|| folder.file_name().and_then(|n| n.to_str()).unwrap_or("")))
 }
 /// A recognized game the game databases haven't been asked about yet (with a
 /// key and the internet) and that still has something they could fill in:
@@ -622,6 +634,33 @@ mod tests {
         set_media(&d, "icon", None).unwrap();
         assert!(current(&d, "icon").is_empty());
         assert!(set_media(&d, "music", Some(&src)).is_err());
+        let _ = fs::remove_dir_all(&d);
+    }
+}
+
+#[cfg(test)]
+mod home_tests {
+    use super::*;
+    #[test]
+    fn playstation_home_is_found_however_named() {
+        for t in ["PlayStation®Home", "PlayStation Home", "playstation_home", "PS3 Home", "PSHome", "PlayStation®Home.lnk",
+                  "PlayStation Home.xmbl", "PlayStation Home (Beta)", "PlayStation®Home Open Beta", "PlayStation Home 1.86", "PlayStation Home v1.86 Offline"] {
+            assert!(is_home_title(t), "{t}");
+        }
+        for t in ["Home Alone", "PlayStation", "Homefront", "PlayStation Home Theater Party", "Little Big Planet"] { assert!(!is_home_title(t), "{t}"); }
+    }
+    #[test]
+    fn a_ps3_home_folder_with_its_rpcs3_shortcut_is_home() {
+        let d = std::env::temp_dir().join(format!("xmb-home-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d); fs::create_dir_all(&d).unwrap();
+        // made by Game Recognition: the PARAM.SFO's title, its .lnk to RPCS3
+        fs::write(d.join("game.json"), r#"{"title":"PlayStation®Home","console":"PS3","titleId":"NPIA00010","launch":"PlayStation®Home.lnk","ps3Lnk":["--no-gui","%RPCS3_GAMEID%:NPIA00010"]}"#).unwrap();
+        assert!(is_home(&d));
+        // the Title ID alone (a renamed folder and title)
+        fs::write(d.join("game.json"), r#"{"title":"My Social Space","titleId":"npia00010","launch":"x.lnk"}"#).unwrap();
+        assert!(is_home(&d));
+        fs::write(d.join("game.json"), r#"{"title":"Some Game","titleId":"BLES00002","launch":"x.lnk"}"#).unwrap();
+        assert!(!is_home(&d));
         let _ = fs::remove_dir_all(&d);
     }
 }

@@ -120,6 +120,9 @@ struct Session {
     settled: bool,
     // LibreWolf's own full screen (F11, a video's full screen button)
     lw_fullscreen: bool,
+    // the page wants the pointer seen where it is (helper.js: not over a
+    // playing video's "cursor: none"); false until the page has said so
+    want_cursor: bool,
 }
 
 fn session() -> &'static Mutex<Session> {
@@ -402,6 +405,11 @@ const USER_JS_BODY: &str = concat!(
     // the XMB palm / fist / click cursors are bigger than 32 px: never block them
     "user_pref(\"layout.cursor.block.enabled\", false);\n",
     "user_pref(\"layout.cursor.block.max-size\", 128);\n",
+    // full screen on / off at once, without LibreWolf's fade to black (its
+    // fade covers the screen with a window of its own for a moment, which the
+    // pointer is then over)
+    "user_pref(\"full-screen-api.transition-duration.enter\", \"0 0\");\n",
+    "user_pref(\"full-screen-api.transition-duration.leave\", \"0 0\");\n",
     // sign-ins stay: LibreWolf deletes cookies and site data when it closes (its
     // "Clear history when LibreWolf closes"), so every site was signed out the
     // next time the browser opened. Only those are kept; the history, cache and
@@ -789,6 +797,12 @@ fn handle_conn(mut s: std::net::TcpStream) -> std::io::Result<()> {
             let _ = mode;
             ok(&mut s)
         }
+        // the helper: whether the page wants the pointer seen where it is
+        ("POST", "/xmb/cursorvis") => {
+            let v = jbody();
+            sess().want_cursor = v.get("visible").and_then(Value::as_bool).unwrap_or(false);
+            ok(&mut s)
+        }
         ("POST", "/xmb/hover") => {
             let v = jbody();
             sess().hover = v.get("href").and_then(Value::as_str).unwrap_or("").to_string();
@@ -893,6 +907,7 @@ fn launch_inner(app: &AppHandle, mode: String, value: Option<String>,
         st.marked = false;
         st.fullscreen = false;
         st.lw_fullscreen = false;
+        st.want_cursor = false;
         st.settled = false;
         st.started = None;
         st.focus = false;
@@ -1365,6 +1380,43 @@ pub fn picker_pointer(app: &AppHandle) -> PickerPointer {
     PickerPointer { stop, thread: Some(thread), marker }
 }
 
+/// A pointer LibreWolf left hidden. Now and then, after a page has hidden the
+/// pointer itself (a playing video, its full screen left with the controller),
+/// the pointer stayed hidden when it shouldn't any more, until the window was
+/// left and clicked again. When the page wants the pointer seen (helper.js) but
+/// Windows still shows none for a moment: first a small move of the pointer, as
+/// a real mouse makes; then, if still hidden, the pointer taken out of the page
+/// and back in (LibreWolf sets its pointer again as it comes in). Logged, so it
+/// can be followed if it happens anyway.
+#[cfg(windows)]
+#[derive(Default)]
+struct PointerStuck { since: Option<Instant>, stage: u8 }
+#[cfg(windows)]
+impl PointerStuck {
+    fn tick(&mut self, wanted: bool, hwnd: isize, rect: (i32, i32, i32, i32), full: bool) {
+        if !wanted || !win::pointer_hidden() {
+            if self.stage >= 1 {
+                crate::log::line("INFO", "browser", &format!("the pointer is seen again (after {})",
+                    if self.stage == 1 { "a small move" } else { "taking it out of the page and back" }));
+            }
+            *self = Self::default();
+            return;
+        }
+        let t = self.since.get_or_insert_with(Instant::now).elapsed();
+        if self.stage == 0 && t >= Duration::from_millis(600) {
+            crate::log::line("INFO", "browser", &format!("the pointer stayed hidden while the page wants it seen ({}): a small move", win::pointer_state()));
+            win::wake_pointer();
+            self.stage = 1;
+        } else if self.stage == 1 && t >= Duration::from_millis(1200) {
+            if !full && win::reenter_pointer(hwnd, rect) { self.stage = 2; }
+            else { self.stage = 3; crate::log::line("WARN", "browser", &format!("the pointer is still hidden ({})", win::pointer_state())); }
+        } else if self.stage == 2 && t >= Duration::from_millis(1800) {
+            crate::log::line("WARN", "browser", &format!("the pointer is still hidden ({})", win::pointer_state()));
+            self.stage = 3;
+        }
+    }
+}
+
 fn start_watchdog(app: AppHandle, gen: u64) {
     std::thread::spawn(move || {
         #[cfg(windows)]
@@ -1377,6 +1429,8 @@ fn start_watchdog(app: AppHandle, gen: u64) {
         let mut in_place_since: Option<Instant> = None;
         #[cfg(windows)]
         let mut app_on_top = false;
+        #[cfg(windows)]
+        let mut stuck = PointerStuck::default();
         loop {
             let waiting = { let st = sess(); st.hwnd == 0 || !st.settled };
             std::thread::sleep(Duration::from_millis(if waiting { 15 } else { 150 }));
@@ -1486,6 +1540,8 @@ fn start_watchdog(app: AppHandle, gen: u64) {
                 } else {
                     win::clip_to(hwnd, rect);
                 }
+                let want = sess().want_cursor;
+                stuck.tick(!hidden && phase == "ready" && want && win::foreground() == hwnd, hwnd, rect, full);
             }
             #[cfg(not(windows))]
             {
@@ -1546,6 +1602,7 @@ fn finish_close(app: &AppHandle, _gen: u64) {
         st.hidden = false;
         st.fullscreen = false;
         st.lw_fullscreen = false;
+        st.want_cursor = false;
         st.settled = false;
         st.focus = false;
         st.cmds.clear();
@@ -2173,6 +2230,48 @@ mod win {
         send_mouse(MOUSEEVENTF_MOVE, 0);
     }
 
+    #[repr(C)]
+    struct CURSORINFO { cb: u32, flags: u32, hcursor: isize, pt: POINT }
+    #[link(name = "user32")]
+    extern "system" { fn GetCursorInfo(ci: *mut CURSORINFO) -> BOOL; }
+    fn cursor_info() -> Option<CURSORINFO> {
+        let mut ci = CURSORINFO { cb: std::mem::size_of::<CURSORINFO>() as u32, flags: 0, hcursor: 0, pt: POINT::default() };
+        (unsafe { GetCursorInfo(&mut ci) } != 0).then_some(ci)
+    }
+    /// Is no pointer shown right now (hidden, held back by Windows after a touch
+    /// or pen, or the window under it showing none)?
+    pub fn pointer_hidden() -> bool {
+        // (CURSOR_SHOWING 1, CURSOR_SUPPRESSED 2)
+        cursor_info().map(|c| c.flags & 1 == 0 || c.flags & 2 != 0 || c.hcursor == 0).unwrap_or(false)
+    }
+    /// The pointer as Windows has it, for the log.
+    pub fn pointer_state() -> String {
+        match cursor_info() {
+            Some(c) => format!("{}{}", if c.flags & 2 != 0 { "held back by Windows" } else if c.flags & 1 == 0 { "hidden by Windows" } else { "shown" },
+                if c.hcursor == 0 { ", no pointer picture" } else { "" }),
+            None => "unknown".into(),
+        }
+    }
+    /// Take the pointer just outside the window (x, y, w, h) and back where it
+    /// was, each with a small move, as a real mouse leaving and coming back in.
+    /// false when there's no room outside it (the window fills the screen).
+    pub fn reenter_pointer(h: HWND, rect: (i32, i32, i32, i32)) -> bool {
+        let (x, y, w, hh) = rect;
+        let (sx, sy, sw, sh) = monitor_rect(h);
+        let mid = y + hh / 2;
+        let out = if x - 3 >= sx { (x - 3, mid) } else if x + w + 2 < sx + sw { (x + w + 2, mid) }
+            else if y - 3 >= sy { (x + w / 2, y - 3) } else if y + hh + 2 < sy + sh { (x + w / 2, y + hh + 2) } else { return false };
+        let mut p = POINT::default();
+        unsafe { GetCursorPos(&mut p); }
+        unclip();
+        unsafe { SetCursorPos(out.0, out.1); }
+        wake_pointer();
+        std::thread::sleep(std::time::Duration::from_millis(40));
+        unsafe { SetCursorPos(p.x, p.y); }
+        wake_pointer();
+        true
+    }
+
     pub fn center_cursor(rect: (i32, i32, i32, i32)) {
         let (x, y, w, h) = rect;
         unsafe { SetCursorPos(x + w / 2, y + h / 2); }
@@ -2183,8 +2282,16 @@ mod win {
         send_mouse(MOUSEEVENTF_WHEEL, (notches * 120) as u32);
     }
     /// Scroll by raw wheel units (120 = one notch; + = up), for smooth scrolling.
+    /// A pointer hidden while scrolling (a video's own, in full screen too,
+    /// which only comes back on a move) gets a small move, as a mouse would
+    /// make, so it shows again (at most every 0.4 s).
     pub fn wheel_raw(units: i32) {
         send_mouse(MOUSEEVENTF_WHEEL, units as u32);
+        static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+        if pointer_hidden() {
+            let mut l = LAST.lock().unwrap_or_else(|e| e.into_inner());
+            if l.map(|t| t.elapsed() >= std::time::Duration::from_millis(400)).unwrap_or(true) { *l = Some(std::time::Instant::now()); wake_pointer(); }
+        }
     }
 
     pub fn right_button(down: bool) {

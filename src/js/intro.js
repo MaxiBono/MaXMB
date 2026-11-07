@@ -139,7 +139,7 @@ export function playIntro(audio, { enabled = true, bootSound = "coldboot", onSou
       body.classList.remove("intro-run");
       root.classList.add("gone");
     };
-    const finish = () => { if (resolved) return; resolved = true; window.removeEventListener("keydown", skip); window.removeEventListener("pointerdown", skip); resolve(); };
+    const finish = () => { if (resolved) return; resolved = true; window.removeEventListener("keydown", skip); window.removeEventListener("pointerdown", skip); window.__introSkip = null; resolve(); };
     const frame = (now) => {
       if (done) return;
       const s = (now - t0) / 1000;
@@ -186,5 +186,7 @@ export function playIntro(audio, { enabled = true, bootSound = "coldboot", onSou
 
     window.addEventListener("keydown", skip, { once: true });
     window.addEventListener("pointerdown", skip, { once: true });
+    // (and a controller button: the controller is read in main.js, which calls this)
+    window.__introSkip = skip;
   }));
 }

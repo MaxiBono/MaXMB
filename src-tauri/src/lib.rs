@@ -7,6 +7,7 @@ mod copies;
 mod browser;
 mod cursorlock;
 mod focus;
+mod bootstart;
 mod gameart;
 mod screenshot;
 mod gamepad;
@@ -744,9 +745,17 @@ pub(crate) fn current_settings(app: &AppHandle) -> Settings {
     s
 }
 
+/// Start at Windows Startup: a Task Scheduler task on Windows (bootstart.rs;
+/// the older Run-key entry is taken away), the usual autostart elsewhere.
 fn apply_autostart(app: &AppHandle, enable: bool) {
     let mgr = app.autolaunch();
-    let _ = if enable { mgr.enable() } else { mgr.disable() };
+    #[cfg(windows)]
+    {
+        if mgr.is_enabled().unwrap_or(false) { let _ = mgr.disable(); }
+        bootstart::apply(enable);
+    }
+    #[cfg(not(windows))]
+    { let _ = if enable { mgr.enable() } else { mgr.disable() }; }
 }
 
 pub(crate) fn apply_fullscreen(app: &AppHandle, enable: bool) {
@@ -782,6 +791,8 @@ fn music_cover(path: String) -> Option<String> {
 
 #[tauri::command]
 fn quit_app(app: AppHandle) {
+    // (the page's Close System key, still held from a press in another program)
+    if quitkey::held_from_elsewhere() { log::line("INFO", "system", "Close System pressed in another program: ignored"); return; }
     cursorlock::release_now();
     browser::on_app_exit(&app);
     maybe_cleanup_temp(&app);
@@ -962,6 +973,9 @@ pub fn run() {
             hidpad::start(handle.clone());
             // the controller always gets the app back in front (see focus.rs)
             focus::start_pad_watch(handle.clone());
+            // started with Windows (the Start at Windows Startup task): kept in
+            // front while the other startup programs open (focus.rs)
+            if bootstart::started_at_boot() { focus::boot_guard(handle.clone()); }
             // the Close System key (F4): closes the app at once, even if the page is stuck
             quitkey::start(handle.clone());
             build_main_window(handle)?;
@@ -989,7 +1003,15 @@ pub fn run() {
             }
             // Closing the window (the X button) also triggers temp-file cleanup
             // when "Delete Temporary Files" is on.
-            if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // (Alt+F4 that closed a game or an emulator, still held as the
+                // app comes back to the front: not meant for the app)
+                if quitkey::held_from_elsewhere() {
+                    api.prevent_close();
+                    log::line("INFO", "system", "close asked by Alt+F4 pressed in another program: ignored");
+                    return;
+                }
+                log::line("INFO", "system", "the window was asked to close: closing");
                 cursorlock::release_now();
                 browser::on_app_exit(&window.app_handle());
                 maybe_cleanup_temp(&window.app_handle());

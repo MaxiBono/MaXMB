@@ -30,13 +30,19 @@ What I mainly worked on:
 </p>
 
 <p align="center">
-  <img src="readme/gallery/1.png" width="32.5%"> <img src="readme/gallery/2.png" width="32.5%"> <img src="readme/gallery/3.png" width="32.5%">
+  <img src="readme/gallery/1.png" width="49%"> <img src="readme/gallery/2.png" width="49%">
+  <img src="readme/gallery/3.png" width="49%"> <img src="readme/gallery/4.png" width="49%">
 </p>
 
 <p align="center">
-  <img src="readme/gallery/4.png" width="49%"> <img src="readme/gallery/5.png" width="49%">
-  <img src="readme/gallery/6.png" width="49%"> <img src="readme/gallery/7.png" width="49%">
-  <img src="readme/gallery/8.png" width="49%">
+  <img src="readme/gallery/5.png" width="49%"> <img src="readme/gallery/6.png" width="49%">
+  <img src="readme/gallery/7.png" width="49%"> <img src="readme/gallery/8.png" width="49%">
+  <img src="readme/gallery/9.png" width="49%">
+</p>
+
+<p align="center">
+  <img src="readme/gallery/10.png" width="49%"> <img src="readme/gallery/11.png" width="49%">
+  <img src="readme/gallery/12.png" width="49%"> <img src="readme/gallery/13.png" width="49%">
 </p>
 
 ---

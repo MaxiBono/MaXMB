@@ -1,6 +1,6 @@
 {
   "name": "maxmb",
-  "version": "1.1.0",
+  "version": "1.1.4",
   "private": true,
   "description": "The XMB taken to the Max. A faithful, usable and fully customizable recreation of the PS3's XMB (XrossMediaBar) for Windows PCs.",
   "scripts": {

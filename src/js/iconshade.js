@@ -279,19 +279,36 @@ export function pruneShades(colorKeys) {
     const c = k.slice(k.lastIndexOf("|") + 1);
     if (want.has(c)) continue;
     _cache.delete(k); n++;
-    const b = _blobUrls.get(v);
-    if (b) { URL.revokeObjectURL(b); _blobUrls.delete(v); }
+    dropShaded(v);
   }
   return n;
 }
 export function shadeCacheSize() { return _cache.size; }
+// Themes no longer in use (PS3 theme, Icon Set, Custom Theme): the shading made
+// for their icons is dropped (with its blob: links), and so is everything made
+// from their pictures that were let go of (`gone`: their blob: links), the
+// decoded pictures included. live: the keys of the themes still in use.
+export function dropThemeShades(live, gone = []) {
+  const goneSet = new Set(gone);
+  let n = 0;
+  for (const [k, v] of _cache) {
+    const name = k.slice(k.indexOf("|") + 1).replace(/^~[a-z]+~/, "");
+    const tk = /^[tc]:/.test(name) ? name.slice(2).split("|")[0] : "";
+    const oldTheme = /^(p3t|icon|custom):/.test(tk) && !live.has(tk);
+    if (!oldTheme && !(goneSet.size && gone.some((u) => k.includes(u)))) continue;
+    _cache.delete(k); n++;
+    dropShaded(v);
+  }
+  for (const u of goneSet) { _imgCache.delete(u); _imgLoaded.delete(u); }
+  return n;
+}
 // (what's in memory, for checking: the pictures' keys, how many lenses and glow shapes)
 export function shadeCacheInfo() { return { keys: [..._cache.keys()], lenses: _glassMaps.size, glows: _glowMasks.size }; }
 // Cache Management > Delete Icon Shading (or Delete All Cache): every shaded
 // picture, lens and glow shape forgotten too (not only the saved file), so the
 // icons are all made again
 export function clearShades() {
-  for (const v of _cache.values()) { const b = _blobUrls.get(v); if (b) { URL.revokeObjectURL(b); _blobUrls.delete(v); } }
+  for (const v of _cache.values()) dropShaded(v);
   _cache.clear(); _added = 0;
   _glassMaps.clear();
   for (const u of _glowMasks.values()) { try { URL.revokeObjectURL(u); } catch (e) {} }
@@ -306,6 +323,14 @@ export function takeNewShadeCount() { const n = _added; _added = 0; return n; }
 // again and copied with every menu that's drawn, and the memory left behind
 // makes for long clean-up pauses on slow computers.
 const _blobUrls = new Map();
+// A shaded picture dropped: its blob: link let go of, and the picture loaded
+// from it (or from its data: form) forgotten too (kept, every Icon Style /
+// Color change left a whole set of decoded pictures behind for good)
+function dropShaded(v) {
+  const b = _blobUrls.get(v);
+  if (b) { URL.revokeObjectURL(b); _blobUrls.delete(v); _imgCache.delete(b); _imgLoaded.delete(b); }
+  _imgCache.delete(v); _imgLoaded.delete(v);
+}
 export function shadeSrc(u) {
   if (!u || !u.startsWith("data:")) return u;
   let b = _blobUrls.get(u);
@@ -333,8 +358,7 @@ export function dropOtherStyles(keep) {
     const name = k.slice(k.indexOf("|") + 1);
     if (pre.some((p) => name.startsWith(p))) continue;
     _cache.delete(k); n++;
-    const b = _blobUrls.get(v);
-    if (b) { URL.revokeObjectURL(b); _blobUrls.delete(v); }
+    dropShaded(v);
   }
   if (!keep.includes("glasslive")) _glassMaps.clear();
   if (!keep.includes("glow")) { for (const u of _glowMasks.values()) { try { URL.revokeObjectURL(u); } catch (e) {} } _glowMasks.clear(); _edgeColors.clear(); }

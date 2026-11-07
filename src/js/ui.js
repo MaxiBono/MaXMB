@@ -3,6 +3,7 @@ import { sysBase, playerIcon } from "./themes.js";
 const mpIcon = (n) => playerIcon("mp", n, `./assets/icons/system/${n}.png`);
 import { call, Input, thumbUrl, stillUrl } from "./api.js";
 import { PadNav, MUSIC_LINKS, nodeX } from "./padnav.js";
+import { fadeOut } from "./menufade.js";
 import { SpectrumTap } from "./ps3wave/spectrum.js";
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
@@ -215,9 +216,12 @@ export class SideMenu {
     this.audio.play("options", 0.5);   // (a theme's option menu sound, if it has one)
     window.__menuTint && window.__menuTint();   // the menu takes the background's current colour
     if (this.sel >= SM_VISIBLE) this.top = this.sel - SM_VISIBLE + 1;
-    // over a background picture (a game's / a section's): the stripe version
+    // (always the coloured stripe, with or without a background picture behind:
+    // see GameMenu; "nobg": nothing behind)
     const withBg = !!document.querySelector(".bg-layer.show");
-    this.el.className = `gamemenu show${withBg ? " bg" : ""}${swatches ? " swatches" : ""}`;
+    // (opened again while the last one fades out: that one goes at once)
+    if (this.el.__fadeStop) { this.el.__fadeStop(); this.el.__fadeStop = null; }
+    this.el.className = `gamemenu show bg${withBg ? "" : " nobg"}${swatches ? " swatches" : ""}`;
     this._render();
   }
   _render() {
@@ -248,7 +252,18 @@ export class SideMenu {
       </div>`;
     this.el.querySelectorAll(".gm-item").forEach((n) => n.addEventListener("click", () => { this.sel = +n.dataset.i; this._pick(); }));
   }
-  close() { this.el.className = "sidemenu"; this.el.innerHTML = ""; this.spin = null; }
+  // closing: it fades out where it is (styles.css gmOut, as the Triangle
+  // menu), then it's emptied, unless something else opened in it meanwhile;
+  // ended at once when something else opens elsewhere (see menufade.js)
+  close() {
+    this.spin = null;
+    const el = this.el;
+    if (!el.classList.contains("show")) { el.className = "sidemenu"; el.innerHTML = ""; return; }
+    if (el.classList.contains("closing")) return;
+    el.classList.add("closing");
+    if (el.__fadeStop) el.__fadeStop();
+    el.__fadeStop = fadeOut(el, () => { el.__fadeStop = null; if (el.classList.contains("closing")) { el.className = "sidemenu"; el.innerHTML = ""; } });
+  }
   _upd() {
     if (this.sel < this.top) this.top = this.sel;
     if (this.sel >= this.top + SM_VISIBLE) this.top = this.sel - SM_VISIBLE + 1;
@@ -272,6 +287,7 @@ export class GameInfoPanel {
     const rows = [["Developer", game.developer], ["Publisher", game.publisher],
       ["Released", game.releaseDate], ["Genre", game.genre],
       ["Players", game.players], ["Version", game.version]].filter(([, v]) => v);
+    if (this.el.__fadeStop) { this.el.__fadeStop(); this.el.__fadeStop = null; }
     this.el.className = "sidemenu info show";
     this.el.innerHTML = `<div class="gi-title">${esc(game.copy > 1 ? `${game.title} (${game.copy})` : game.title)}</div>
       <div class="gi-desc">${esc(game.description || "")}</div>

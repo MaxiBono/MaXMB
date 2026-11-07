@@ -83,6 +83,40 @@ fn front_now(app: &AppHandle) {
     }
 }
 
+/// Started with Windows (bootstart.rs): for the first minute, while the
+/// other programs that start with Windows open their windows (and take the
+/// focus, so the controller and keyboard no longer reach the app), the app
+/// takes the front back each time, unless the user chose the other window
+/// (a key, click or touch just before it came to the front: then it's left
+/// there and the watch ends). Not during a game.
+pub fn boot_guard(app: AppHandle) {
+    #[cfg(windows)]
+    std::thread::spawn(move || {
+        let start = std::time::Instant::now();
+        let own = std::process::id();
+        let mut taken: Vec<String> = Vec::new();
+        while start.elapsed() < std::time::Duration::from_secs(60) {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            if in_game() { return; }
+            let Some(front) = win::foreground_pid() else { continue };
+            if front == own { continue; }
+            let name = win::name_of(&win::processes(true), front);
+            // (Windows' own parts the user may need, like the touch keyboard, are
+            // left alone; the desktop and taskbar (Explorer) taking the front aren't)
+            if win::is_shell_process(front) && !name.eq_ignore_ascii_case("explorer.exe") { continue; }
+            // (the user's own choice: input in the last moment)
+            if win::input_idle_ms() < 1500 { crate::log::line("INFO", "system", "startup: another window chosen by the user, left in front"); return; }
+            let Some(h) = main_hwnd(&app) else { continue };
+            if !taken.contains(&name) { crate::log::line("INFO", "system", &format!("startup: {name} took the front; the app takes it back")); taken.push(name); }
+            win::force_foreground(h);
+            let a = app.clone();
+            let _ = app.run_on_main_thread(move || front_now(&a));
+        }
+    });
+    #[cfg(not(windows))]
+    let _ = app;
+}
+
 /// Back from a game: game mode ends, the window is made to show again (see
 /// `repair_window`), brought to the front, and the page is told ("game-exited").
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -897,6 +931,16 @@ mod win {
         fn IsWindowVisible(h: HWND) -> BOOL;
         fn GetWindow(h: HWND, cmd: u32) -> HWND;
         fn AllowSetForegroundWindow(pid: u32) -> BOOL;
+        fn GetLastInputInfo(info: *mut LASTINPUTINFO) -> BOOL;
+    }
+    #[repr(C)]
+    struct LASTINPUTINFO { cb_size: u32, dw_time: u32 }
+    #[link(name = "kernel32")]
+    extern "system" { fn GetTickCount() -> u32; }
+    /// How long since the user last used the keyboard, mouse or touch (ms).
+    pub fn input_idle_ms() -> u32 {
+        let mut li = LASTINPUTINFO { cb_size: std::mem::size_of::<LASTINPUTINFO>() as u32, dw_time: 0 };
+        unsafe { if GetLastInputInfo(&mut li) == 0 { return u32::MAX; } GetTickCount().wrapping_sub(li.dw_time) }
     }
     #[link(name = "kernel32")]
     extern "system" {

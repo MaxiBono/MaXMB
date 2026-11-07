@@ -182,7 +182,11 @@ pub(crate) fn parse_game(dir: &Path, album: Option<String>, icon_cache: Option<&
     // where the game / program comes from: the folder its .exe is in (through
     // the app's own shortcut too), or the folder a Windows shortcut (.lnk)
     // points to (kept up to date with the shortcut)
-    if let Some(src) = source_dir(dir, &launch, shortcut.as_deref()) {
+    // (not a PS3 game's: its shortcut points at RPCS3, while its source folder is
+    // the game's own, set when it was recognized: game art and preview are
+    // read from there)
+    let ps3_game = m.contains_key("ps3Lnk") || m.contains_key("ps3Key");
+    if let Some(src) = source_dir(dir, &launch, shortcut.as_deref()).filter(|_| !ps3_game) {
         let is_lnk = launch.to_lowercase().ends_with(".lnk") || shortcut.is_some();
         let now = m.get("sourceDir").and_then(|v| v.as_str()).map(str::to_string);
         if now.is_none() || (is_lnk && now.as_deref() != Some(src.as_str())) {
@@ -218,6 +222,7 @@ pub(crate) fn parse_game(dir: &Path, album: Option<String>, icon_cache: Option<&
         starts: gs("starts"),
         is_disc: m.get("isDisc").and_then(|v| v.as_bool()).unwrap_or(false),
         console,
+        title_id: gs("titleId"),
         options_band: m.get("optionsBand").and_then(|v| v.as_bool()),
         hide_title: m.get("hideTitleOnBackground").and_then(|v| v.as_bool()),
         launch,

@@ -1,3 +1,4 @@
+import { fadeOut } from "./menufade.js";
 // The game options (△) menu and the game Information screen, as on the PS3.
 //
 //  • GameMenu – a panel down the right side (a theme-coloured stripe over the
@@ -59,13 +60,35 @@ export class GameMenu {
     this.sel = this.TOPL.length;      // Start (the first lower entry)
     this.top = 0;                     // first visible lower entry
     this.subOf = null;
-    this.el.classList.toggle("bg", !!this.opts.withBg);
+    // (always the coloured stripe, the version made for a game's background:
+    // without one, the pale panel looked see-through; "nobg": nothing behind,
+    // the XMB's other categories blurred behind it as before)
+    this.el.classList.add("bg");
+    this.el.classList.toggle("nobg", !this.opts.withBg);
     if (this.opts.rgb) this.el.style.setProperty("--gm-rgb", this.opts.rgb.join(","));
+    // (opened again while the last one fades out: that one goes at once)
+    if (this._fadeStop) { this._fadeStop(); this._fadeStop = null; }
+    this.el.classList.remove("closing", "sub");
     this.el.classList.add("show");
+    this._subShown = null;
     this._render();
   }
-  close() { this.el.classList.remove("show", "sub"); this.el.innerHTML = ""; this.subOf = null; document.body.classList.remove("gm-sub"); }
-  get isOpen() { return this.el.classList.contains("show"); }
+  // closing: it fades out where it is, as it is (a mini menu open stays, and
+  // the XMB stays moved left with it until the fade ends: never the XMB sliding
+  // back under a fading panel), then it's emptied; it takes no buttons
+  // meanwhile; ended at once when something else opens (see menufade.js)
+  close() {
+    this.subOf = null; this._subShown = null;
+    if (!this.el.classList.contains("show")) { document.body.classList.remove("gm-sub"); return; }
+    if (this.el.classList.contains("closing")) return;
+    this.el.classList.add("closing");
+    this._fadeStop = fadeOut(this.el, () => {
+      this._fadeStop = null;
+      this.el.classList.remove("show", "sub", "closing"); this.el.innerHTML = "";
+      document.body.classList.remove("gm-sub");
+    });
+  }
+  get isOpen() { return this.el.classList.contains("show") && !this.el.classList.contains("closing"); }
 
   _render() {
     const sub = this.subOf;
@@ -87,12 +110,15 @@ export class GameMenu {
       const li = LOWL.findIndex((x) => x.id === sub.id);
       const rowTop = pi >= 0 ? SUB_TOP + pi * SUB_PARENT_STEP : LOWER_TOP + (li - this.top) * LOWER_ROW;
       const ci = Math.max(0, sub.options.findIndex((o) => o.id === sub.current));
-      subHTML = `<div class="gm-sub-bg"></div><div class="gm-line gm-line2"></div>
+      // (fading in as it opens; drawn again as you move in it, without fading again)
+      const fresh = this._subShown !== sub;
+      this._subShown = sub;
+      subHTML = `<div class="gm-subwrap${fresh ? " gm-fadein" : ""}"><div class="gm-sub-bg"></div><div class="gm-line gm-line2"></div>
         <img class="gm-back" src="./assets/icons/system/tex_arrow_r.png" alt="" style="top:${rowTop}vh">
         <div class="gm-subl" style="top:${rowTop - ci * SUB_ROW}vh">${sub.options.map((o, i) =>
           `<div class="gm-item gm-sopt${i === sub.sel ? " sel" : ""}" data-s="${i}"><span class="gm-label">${esc(o.label)}${
-            o.tri ? `<span class="gm-tri">${o.tri === "down" ? "\u25BC" : "\u25B2"}</span>` : ""}</span></div>`).join("")}</div>`;
-    }
+            o.tri ? `<span class="gm-tri">${o.tri === "down" ? "\u25BC" : "\u25B2"}</span>` : ""}</span></div>`).join("")}</div></div>`;
+    } else this._subShown = null;
     this.el.innerHTML = `${this._band()}<div class="gm-line"></div>
       <div class="gm-top">${TOPL.map((x, i) => it(x, i)).join("")}</div>
       <div class="gm-lower">
@@ -130,8 +156,11 @@ export class GameMenu {
     const s = this.subOf, o = s.options[s.sel];
     this.audio.play("enter", 0.5);
     this.opts.subs[s.id].current = o.id;
-    this.subOf = null; this._render();
+    this.subOf = null;
     this.onPick && this.onPick(s.id, o.id);
+    // (the choice closed the menu: it fades out as it was, its mini menu
+    // included; otherwise back to the panel)
+    if (this.isOpen) this._render();
   }
   onInput(a) {
     if (this.subOf) {

@@ -140,7 +140,7 @@ export async function call(cmd, args = {}) {
     case "browser_cmd": case "browser_type": if (mock.browser) mock.browser.cmds.push({ cmd, ...args }); return null;
     case "browser_input": case "browser_visible": return null;
     case "content_writable": return { ok: true, dir: "(preview)" };
-    case "app_info": return { name: "MaXMB", version: "1.1.0", contentRoot: "(preview)" };
+    case "app_info": return { name: "MaXMB", version: "1.1.4", contentRoot: "(preview)" };
     case "scan_library": return structuredClone(MOCK_GAMES);
     case "game_sources_sync": return 0;
     case "media_recognize": case "media_source_remove": return 0;

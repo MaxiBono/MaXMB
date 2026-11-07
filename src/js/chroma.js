@@ -20,6 +20,23 @@ export const isVideoPath = (p) => {
 // lose out while a menu loads many small pictures at once) is asked for again
 // a few times; once it's ready, a "bgmedia-ready" event lets a menu open over
 // it draw what's behind it again (its blur would otherwise keep the black).
+// A picture / video from another address (your files reach the page through
+// the asset address) loaded so the page may read it back: the reactive Icon
+// Styles bend it (glasslayer.js). If it can't be loaded that way, it's loaded
+// as before (shown, only not bent).
+export function readableFrom(el, src) {
+  let other = false;
+  try { const u = new URL(src, location.href); other = /^https?:$/.test(u.protocol) && u.origin !== location.origin; } catch (e) {}
+  if (!other) return;
+  el.crossOrigin = "anonymous";
+  el.addEventListener("error", function off() {
+    if (el.crossOrigin == null) return;
+    el.removeAttribute("crossorigin"); el.__noRead = true;
+    el.removeEventListener("error", off);
+    el.src = src; if (el.play) el.play().catch(() => {});
+  });
+}
+
 function retrying(el, src, ready) {
   let tries = 0;
   el.addEventListener("error", () => {
@@ -40,6 +57,7 @@ function retrying(el, src, ready) {
 function mediaEl(src, path) {
   if (isVideoPath(path)) {
     const v = document.createElement("video");
+    readableFrom(v, src);
     Object.assign(v, { src, muted: true, loop: true, autoplay: true, playsInline: true });
     v.defaultMuted = true; v.volume = 0;
     v.setAttribute("muted", "");
@@ -49,9 +67,20 @@ function mediaEl(src, path) {
   }
   const img = document.createElement("img");
   img.alt = "";
+  readableFrom(img, src);
   retrying(img, src, "load");
   img.src = src;
   return img;
+}
+
+// A layer's old pictures / videos taken off: a video stopped and its file let
+// go of (a video only taken out of the page keeps its file and decoder until
+// it's cleaned up, whenever that is)
+function clearLayer(el) {
+  for (const v of el.querySelectorAll("video")) {
+    try { v.pause(); v.removeAttribute("src"); v.load(); } catch (e) {}
+  }
+  el.innerHTML = "";
 }
 
 // Fill `el` with the media at `path` (src = its loadable URL). Returns true if shown.
@@ -60,7 +89,7 @@ export function setLayerMedia(el, src, path) {
   // already showing this picture / video: leave it (no reload or flicker)
   if (src && el._src === src && !el._chroma && el.firstChild) { el.classList.add("show"); return true; }
   if (el._chroma) { el._chroma.stop(); el._chroma = null; }
-  el.innerHTML = ""; el._src = null; el._chromaSrc = null; el.classList.remove("ready");
+  clearLayer(el); el._src = null; el._chromaSrc = null; el.classList.remove("ready");
   if (!src) { el.classList.remove("show"); return false; }
   el.appendChild(mediaEl(src, path));
   el._src = src;
@@ -76,7 +105,7 @@ export function setOverlayMedia(el, src, path, strength = 0.5, key = "green") {
   if (el._chroma && el._chromaSrc === src) { el._chroma.strength = strength; el._chroma.setKey(key); return true; }
   if (!src || !isVideoPath(path)) return setLayerMedia(el, src, path);   // images (or nothing)
   if (el._chroma) { el._chroma.stop(); el._chroma = null; }
-  el.innerHTML = ""; el._src = null;
+  clearLayer(el); el._src = null;
   const k = new ChromaKeyVideo(src);
   if (!k.ok) { return setLayerMedia(el, src, path); }   // no WebGL: plain video
   k.strength = strength; k.setKey(key);
@@ -166,6 +195,8 @@ class ChromaKeyVideo {
           gl.uniform3f(this.uKey, ...this._key.rgb);
           gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
           gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+          // (the reactive icons' backdrop copies the frame now, while it's there: glasslayer.js)
+          if (window.__onLayerFrame) window.__onLayerFrame(this.canvas);
         } catch (e) {
           // a cross-origin video can't be read by WebGL: reload it from an
           // in-memory copy (same origin) once
@@ -197,5 +228,8 @@ class ChromaKeyVideo {
     this.running = false;
     if (this._blobUrl) URL.revokeObjectURL(this._blobUrl);
     try { this.video.pause(); this.video.removeAttribute("src"); this.video.load(); } catch (e) {}
+    // (its graphics given back at once, not when the page gets round to it)
+    try { this.gl && this.gl.getExtension("WEBGL_lose_context")?.loseContext(); } catch (e) {}
+    this.gl = null;
   }
 }

@@ -1,3 +1,317 @@
+1.1.4:
+
+
+------------------------------------------------------------------------
+1. Folder Color, Folder Color Pick and Theme Folders
+------------------------------------------------------------------------
+
+New: three options in Theme Settings > Text and Color, after Clock Color.
+
+- Folder Color ("On: Make all folders share the same color."), On by default, as Icon Color:
+  user.theme.folderColorAll. Off: every folder in its own colors (the system's plain
+  folders, a theme's own colors), whatever Folder Color Pick or a PS3 theme's Theme Color
+  says.
+- Folder Color Pick (no description, as Icon Color Pick): the color of every folder, with
+  Icon Color Pick's choices. Original (the default) takes the background's color, as Icon
+  Color Pick's Original does.
+  - xmb-themes.js _applyFolderColor(): sets --folder-color (the user's choice, or the
+    background's color, ICON_AUTO_RGB; white, no tint, with Folder Color Off); called when
+    themes apply, on a snapshot restore and from onIconAuto (xmb.js), so Original follows the
+    background.
+  - styles.css: every folder frame's .ff-tint uses var(--folder-color). The old --folder-tint
+    (a PS3 theme's color on its own folders) and .ff-set (an Icon Set's folder in the Icon
+    Color) are gone: all folders take Folder Color Pick.
+- Theme Folders ("On: The folders of Custom Themes, Icon Sets and PS3 Themes are shown instead
+  of the default ones."), Off by default.
+  - themes.js setThemeFolders(on); themeIcon(name, folder) gives no theme picture for a folder
+    while it's Off, so every folder is the system's, Icon Sets included. On: Icon Set first,
+    then the Custom Theme, then the PS3 theme, as for the other icons; a PS3 theme's music /
+    video album folder pictures apply too (its "no thumbnail" pictures stay the system's).
+  - xmb-themes.js: a PS3 theme's folder pictures are loaded with its other icons (no longer
+    left out), so Theme Folders can show them.
+  - A Custom Theme's pictures that came from a PS3 theme (Create Custom Theme records them in
+    settings.p3tIcons; older Custom Themes: the folder and album pictures a PS3 theme has,
+    P3T_FOLDER_PICS) count as the PS3 theme's: never used for the P3T_KEEP pictures.
+  - xmb-shared.js itemIcon: folder frames always ask for the folder picture
+    (sysUrl(name, true)). Music / Photo folders holding a cover use a plain folder picture
+    (music_folder.png / photo_folder.png), a name the system and Icon Sets have but PS3 themes
+    don't: when no theme has it, the themes' album picture (icon_music_album_default.png /
+    icon_photo_album_default.png) holds the cover, drawn whole.
+  - Fitted like the system's folders (xmb-shared.js folderFit): themes draw their folder
+    pictures at their own sizes (a PS3 theme's icon_gamedata.png often a 128 x 128 square
+    where the system's is 314 x 178; album pictures filling more or less of theirs).
+    - opaqueBox(): each picture measured once: its solid part (alpha over 128; with nothing
+      solid, as a see-through glass folder, what's seen of it) and everything seen (over 16:
+      glows, shadows, faded decoration).
+    - The solid part is scaled to fill the system folder's (FF_SYS: the wide Game / Video
+      folder, the square Music folder, the Photo folder, measured the same way), centred;
+      the folder tint follows it. The icon / cover goes where it sits in the system folder
+      (FF_THUMB, as styles.css .ff-thumb), in proportion to the solid part, still whole: the
+      folder shows under, beside and over it as the system's does.
+    - Sized with the theme's own icons (themeFolderScale): the median visible height of its
+      item icons (icon_*, not its folders) against the system's (SYS_ICON_FILL 0.58), between
+      0.75 and 1.33 times; fewer than 5 such icons: as the system's.
+    - Everything seen in the picture stays inside the frame: a folder with a big decoration
+      around it comes out smaller instead of spilling out, and is moved back in where it
+      would leave it.
+    - Set as inline styles; a picture not loaded yet (or fully transparent) is drawn as it
+      is. The measurements go with a theme's pictures, 10 s after it's no longer used
+      (forgetFolderFits, called with dropThemeShades).
+- Game Data Utility and every other place that isn't a folder keep the themes' pictures.
+- All three are saved in Custom Themes (folderColorAll, folderColor, themeFolders); Reset
+  Theme Settings puts them back to On, Original and Off.
+
+
+------------------------------------------------------------------------
+2. Themes
+------------------------------------------------------------------------
+
+- PS3 themes with Theme Color on: xmb-settings.js _tcol(prop) gives the theme's color while
+  it's in use, else the user's own. Background Color, Wave Color, Dot Color and Folder Color
+  Pick (THEME_COLOR_CTLS) show it as their current value, and their menus have it selected
+  ("Theme Color (#HEX)" added at the top when it isn't one of the listed colors). The user's
+  own choices are kept underneath and come back when the theme or its Theme Color is turned off.
+- Icon Sets and Sound Effect Sets come first: an icon or sound the set has is the set's, then
+  the Custom Theme's, then the PS3 theme's. xmb-themes.js _applyThemeSounds: a Sound Set
+  without its own Error sound uses its Enter sound for it, before a Custom Theme's Error sound.
+- Custom Themes also save the Reactive Icons over Background/Overlay setting, Intro Icon and
+  Intro Title (their files copied into the theme's media folder like the other pictures).
+- Only what's in use is kept:
+  - chroma.js clearLayer: a Background / Overlay video replaced is stopped and lets go of its
+    file (pause, src removed, load); ChromaKeyVideo.stop gives the Overlay keyer's WebGL
+    context back at once (WEBGL_lose_context).
+  - xmb-themes.js _applyThemes: an Icon Set with Transparency off: its solid copies go with the
+    theme (they were never let go of); the pictures they were made from are kept while in use.
+  - iconshade.js dropThemeShades(live, gone): 10 s after a theme's pictures are let go of, the
+    shading made for themes no longer in use is dropped, with the decoded pictures
+    (_imgCache / _imgLoaded) and the shading made from them.
+
+
+------------------------------------------------------------------------
+3. Icons and Icon Styles
+------------------------------------------------------------------------
+
+- playericons.js (new): the Music Player's, Video Player's and Photo Viewer's icons (Control
+  Panel buttons, status icons, boxes) are redrawn in the Icon Style in use (Glass (Reactive):
+  clear glass; Glossy: the sheen; Flat: one flat color, the marks drawn inside the pictures
+  left see-through; Glow / Glow (Pulsating): with the glow; Original styles: as they are);
+  the Icon Color is put on afterwards. A MutationObserver on #musicplayer and #mediaview
+  redraws pictures as the players draw them (data-psrc / data-psh), cached; xmb.js
+  _applyIconStyle calls setPlayerIconStyle(style).
+  - Glow: each player icon glows in the color of its own edge as drawn (--pg-c), in the Icon
+    Color when that's put on the icons (setPlayerGlowTint).
+  - Glow (Pulsating): no CSS animation on the players' icons; pulse() sets the glow's strength
+    (0.3 to 1 and back every 3.4 s, --pga, inherited) on the player about 6 times a second
+    while it's on screen; nothing runs when it isn't shown, the window is hidden, in low power
+    or in a game.
+  - The Flat pictures and glow colors made for the players are dropped when another style is
+    chosen.
+- Reactive Icons over Background/Overlay (Theme Settings > Icons, under Icon Style; "The
+  Reactive Icon Styles effects work over Backgrounds and Overlays. This option could be very
+  taxing on slower computers."), Off by default, saved as user.theme.reactiveBackdrop.
+  - glasslayer.js setBackdrop(on): the glass bends what's behind the icons, in screen order:
+    PS3 theme background (#p3tbg), wallpaper (with its Background Display fit), background
+    tint, overlay (with its fit and opacity), the wave, and the columns' own backgrounds
+    (.bg-layer, a game's background). Off: the wave only.
+  - _compose(): put together on the graphics card into a texture at half the wave's size
+    (_initCompose, scissor per layer box, blending for opacity), nothing read back. _layerTex /
+    _upLayer: a picture copied once (again if it changes); a video's frame only when it has a
+    new one (requestVideoFrameCallback), at most 15 times a second, through a copy of at most
+    640 x 360; a picture the page may not read is left out instead of spoiling the backdrop.
+    _layers() looked at again at most every 0.1 s. The wave is a layer from its own texture,
+    copied as it's drawn, so it's there between its frames. _freeBackdrop() lets go of the
+    framebuffer, textures and the game background's copy when it's turned off.
+  - chroma.js readableFrom(el, src): Background / Overlay pictures and videos from the asset
+    address are loaded with crossOrigin "anonymous" (or as before, shown but not bent, when
+    that fails); p3tbg.js the same for a PS3 theme's background picture. chroma.js and p3tbg.js
+    call window.__onLayerFrame right after they draw.
+- Loading icons: the section icon in the middle of the loading icon is always the system's own
+  picture (xmb.js _secFlat, sysBase), never a PS3 theme's / Icon Set's.
+- Icon shading cache:
+  - iconshade.js dropShaded(): the shaded icons dropped (pruneShades, dropOtherStyles,
+    dropThemeShades, clearShades) also forget the pictures decoded from them (they stayed in
+    _imgCache / _imgLoaded for good: a whole set more with every Icon Style / Color change).
+  - xmb-iconstyle.js: the saved shading is loaded once at start as a promise (_xsLoadSaved,
+    _xsLoadDone); _applyXmbwShading waits for it and shades from it (the log-in screen's icons
+    were shaded again at every start). xmb-themes.js _preshadeTheme waits for it too.
+  - Before anyone has signed in, nothing is dropped, pruned or saved (_applyIconStyle,
+    _xsScheduleSave): the log-in screen's style and color are only for the moment, and
+    dropping the others threw away the saved shading of the user who then signed in (every
+    icon shaded again at sign-in when that user had another Icon Style or Icon Color).
+
+
+------------------------------------------------------------------------
+4. Wave: Background Color squares in the Original Wave Style
+------------------------------------------------------------------------
+
+Fitted to captures of the console with each color, rendered with the console's own wave files.
+
+- The wave and the sparkles are plain white light on every square (xmb-shared.js
+  ORIG_SQUARE_WAVE and ORIG_SQUARE_SPARKLES = "#ffffff", used by xmb-background.js
+  _applyWaveLook), at the usual brightness (_squareParams no longer changes it per square).
+- ORIG_SQUARES: only the backgrounds' gradients (top / bottom colors, curve), fitted again to
+  the captures' rows outside the wave; Black has its own span (0.55, passed on by
+  _squareParams). All within about 1-3 levels of the console.
+- Not changed: Original (the month's colors), the Visualizer Wave, the linkev Wave Style (its
+  squares keep their own wave and sparkle tints), and your own Wave Color / Sparkles Color.
+
+
+------------------------------------------------------------------------
+5. Menus, scrolling and keys
+------------------------------------------------------------------------
+
+- Scrolling in long lists:
+  - xmb.js _snapScroll(): the columns where held scrolling may snap: Music, Photo, Video, Game,
+    Friends and your own sections ("sec:..."). There, _heldStep (held, one row a step) and
+    _glideStep (held, sped up) put the rows in place at once for the rest of the hold once the
+    hovered row has fallen further behind its place than one step slides it (_behind: the step
+    from the next row's place to the hovered one's plus half a row; _selDrift: its live
+    position). Only a held key or direction (window.__inputRepeat) can start it; separate
+    presses slide as in v1.1.0.
+  - _windowRange: 9 rows above (as in v1.1.0), 14 in those columns.
+- Held direction keys (main.js): the arrows and the Left Stick keys repeat on the controller's
+  own clock (kbRepTick): the first repeat 380 ms after the press, then one every 130 ms, on
+  the display's frames, until the key is let go or the window loses the focus; Windows' own
+  repeats of them are left out (its uneven pace made the lists scroll in bursts). In a text
+  field the arrows keep Windows' repeat. The keys down are kept (_keysDown): another keydown of
+  a key that wasn't let go is its repeat, marked as one or not (some keyboards send a held
+  key's repeats as new presses); used for the lists' speed-up, the Music Player (no held-key
+  repeats) and Close System.
+- Triangle menus and settings option menus:
+  - Always the panel with the lighter background and colored stripe (gamemenu.js "bg", with
+    "nobg" only changing blur and labels; ui.js SideMenu the same); the see-through version is
+    gone.
+  - Fade in: @keyframes gmIn is a 0.15 s fade in place; Sort By / Group Content's menu is drawn
+    in .gm-subwrap, which fades in when it opens (gm-fadein) and not again while you move in it.
+  - Fade out: gamemenu.js close() and SideMenu.close() fade out in 0.15 s (class "closing",
+    @keyframes gmOut), then empty the panel; no buttons are taken meanwhile; one opened again
+    during the fade is shown at once (GameMenu.open, SideMenu.open and GameInfoPanel.open
+    stop it).
+  - menufade.js (new) fadeOut(el, finish): the fade is ended at once when something else
+    takes over meanwhile (anything the XMB hands its buttons to: xmb.overlay, other than the
+    fading menu), checked before each frame is drawn: Information, a dialog, the next menu or
+    a picker never show with the old menu still fading over them.
+  - A Sort By / Group Content choice that closes the menu: it fades out as it was, its mini
+    menu included, and the XMB stays moved left (body.gm-sub) until the fade ends, then slides
+    back (gamemenu.js _subEnter hands the choice on first). Going back from Sort By / Group
+    Content: their menu goes at once, as in v1.1.0 (no fade: it overlapped the panel moving
+    back).
+- xmb.js: a setting's name too long for the room before its value scrolls (marquee) while it's
+  chosen, stopping short of the value.
+- Intro: any controller button newly pressed skips it, as a key or a click does (intro.js
+  offers its skip as window.__introSkip while it plays; main.js readGamepad() calls it, for
+  the webview's Gamepad API and the native PlayStation controller reading). A button held
+  from before the intro doesn't skip it, and the press doesn't reach the menu.
+- Friends: no 99 limit (xmb-shared.js FRIEND_MAX = Infinity; the field is labelled "Number").
+- Change Keybinds: choosing a new key for Close System (or putting F4 back) no longer closes
+  the system. xmb-settings.js _syncHotkeys(quitOn): while the menu is open, changes are saved
+  with the Close System key off, back on as it closes; main.js ignores the page's Close System
+  while the menu is open and for a held key; quitkey.rs: a changed key only counts again once
+  it's been seen up.
+
+
+------------------------------------------------------------------------
+6. Closing games and emulators with Alt+F4
+------------------------------------------------------------------------
+
+Closing a game or an emulator with Alt+F4 (or F4, the Close System key) closed the system too:
+the app came back to the front with the key still held.
+
+- quitkey.rs:
+  - KeyWatch, every 10 ms, for F4 and the Close System key: a new press, and whether the press
+    a key is held by started with another program in front.
+  - A press from elsewhere still counts as such for 1.5 s after it's let go (GRACE_MS); let go
+    while the other program is still in front, the 1.5 s count from when the app is back in
+    front (the app, busy coming back from the game, can take the close it was asked for after
+    the key is up).
+  - A press first seen less than 0.5 s after the app came to the front (FRESH_MS) is taken as
+    made in the program before it (PPSSPP closes the moment Alt+F4 goes down, so the app is in
+    front before the press is first seen).
+  - The Close System key closes the system only on a new press made with the app in front
+    ("Close System key pressed: closing" in the log).
+  - held_from_elsewhere(): any of the above; tests for each case.
+- lib.rs: the window asked to close while held_from_elsewhere() is not closed (prevent_close);
+  quit_app (the page's Close System) is ignored then; both logged, and a close that goes
+  through is logged too ("the window was asked to close: closing").
+- main.js: the page's Close System is also ignored for 0.4 s after the window comes back to
+  the front.
+- Unchanged: the X button, Turn Off System, and Alt+F4 or F4 pressed while the system is in
+  front close it as before.
+
+
+------------------------------------------------------------------------
+7. Internet Browser (LibreWolf)
+------------------------------------------------------------------------
+
+- The pointer left hidden after a video (LibreWolf drops a pointer change the page makes with
+  no mouse move after the window was left and entered again):
+  - browser-ext/helper.js: tells the app whether the page wants the pointer seen where it is
+    (its CSS cursor isn't "none"): on a change, at most every 0.5 s while the pointer moves,
+    and 4 times a second in the frame that has the pointer; background.js passes it on (active
+    tab only) as POST /xmb/cursorvis. The helper's version follows its code.
+  - browser.rs: Session.want_cursor; PointerStuck, checked by the watchdog while the page is in
+    front and wants the pointer: no pointer shown by Windows for 0.6 s (GetCursorInfo) gives a
+    small move as a real mouse makes (wake_pointer); still none at 1.2 s, the pointer is taken
+    just outside the window and back (reenter_pointer; not in full screen). Logged.
+  - browser.rs win::wheel_raw: scrolling (right stick) while Windows shows no pointer gives the
+    pointer a small move (at most every 0.4 s), for a video in full screen too.
+  - user.js: full-screen-api.transition-duration.enter / .leave "0 0" (no fade to black).
+
+
+------------------------------------------------------------------------
+8. Games and startup
+------------------------------------------------------------------------
+
+- PlayStation Home recognized with RPCS3's own desktop shortcut (.lnk):
+  - library.rs: a PS3 game's .lnk no longer replaces its sourceDir with the shortcut's target
+    (RPCS3); Game gets titleId (models.rs Game.title_id, serde "titleId").
+  - gameart.rs is_home_title: the name compared without extension, case, spaces or
+    punctuation, and may end in a version or beta mark; HOME_TITLE_IDS = ["NPIA00010"], is_home
+    also matches by title ID. gamesrc.rs make_ps3 uses is_home(&dir); xmb-shared.js
+    isHomeTitle / isHomeGame the same way. Tests added.
+- Start at Windows Startup through Task Scheduler (bootstart.rs, new):
+  - A Task Scheduler task "MaXMB" replaces the registry Run key (the old entry is turned off):
+    started at the user's sign-in (LogonTrigger), with the user's own rights (LeastPrivilege),
+    normal priority, no time limit, also on battery; made with schtasks /Create /XML from a
+    UTF-16 file in the Temp folder (deleted right after), left alone if it already starts this
+    MaXMB.exe, deleted when the setting is turned off. Starts MaXMB with --autostart.
+  - focus.rs boot_guard: for 60 s after a sign-in start, the app takes the front back (checked
+    every 250 ms) when another program's window takes it; stops at once when the user uses the
+    mouse / keyboard / controller (GetLastInputInfo) or a game is started. Logged.
+  - The setting has no description, as in v1.1.0. Test added.
+
+
+------------------------------------------------------------------------
+9. Security (Content Security Policy)
+------------------------------------------------------------------------
+
+- tauri.conf.json app.security.csp:
+  - font-src 'self' asset: http://asset.localhost data: (was 'self' data:): a font from the
+    Fonts folder or Choose Font File (read through the asset link) was refused, so the text
+    kept the default font, and the Fonts grid's "Aa" previews were refused too.
+  - script-src 'self' 'wasm-unsafe-eval': the PDF reader (pdf.js 4.10.38) decodes a PDF's
+    JPEG 2000 pictures with WebAssembly (JavaScript eval stays not allowed).
+- Checked against every kind of file the page loads (pictures, videos, sounds, files read by
+  the page itself, the PDF worker): nothing else is blocked.
+
+
+------------------------------------------------------------------------
+10. Project files
+------------------------------------------------------------------------
+
+- xmb.js split into parts: xmb.js is the XMB core (building the columns, drawing and laying
+  out the rows, moving around, drilling in and out); its other methods are mixins put on
+  Xmb.prototype at its end: xmb-shared.js (what the parts share: constants, layout metrics,
+  icon / row helpers), xmb-settings.js, xmb-iconstyle.js, xmb-themes.js, xmb-background.js,
+  xmb-games.js, xmb-media.js, xmb-users.js, xmb-friends.js, xmb-psn.js, xmb-browser.js. Shared
+  variables are changed through setters (__set_spineNow, __set_PLAYER_OWN,
+  __set_ICON_AUTO_RGB, __set_ICON_AUTO_GAIN, __set_ICON_AUTO_DEFAULT). Fixed on the way: the
+  game Triangle menu's "Search" called the Internet Browser's _browserSearch; it's now
+  _browserSearchFor(title).
+- Version 1.1.0 -> 1.1.4 (package.json, package-lock.json, src-tauri/Cargo.toml,
+  src-tauri/Cargo.lock, src-tauri/tauri.conf.json, the browser preview's app_info in api.js).
+
+
 1.1.0:
 
 
@@ -23,9 +337,9 @@ drawing the XMB wave from the console's own lines.qrc (firmware 4.93).
   LinesController, the HDR glare chain (GlareSourcePre, Copy, mips, Gaussian, AccGlare),
   ToneApplyDisplay and particles. MaXMB additions: a custom background map for Background
   Color squares, the wave without its background (over a picture or video), wave and sparkle
-  colours, and the background rendered on its own (for icon / menu colours).
+  colors, and the background rendered on its own (for icon / menu colors).
 - original.js: the Wave Style driver (same controls as linkev's wave in wave.js): Background
-  Color, Month and Time Colors, colours, waves / sparkles on or off, wallpaper, Still Waves,
+  Color, Month and Time Colors, colors, waves / sparkles on or off, wallpaper, Still Waves,
   FPS Cap, focus and in-game power saving, controller motion.
   - Graphics safety: shaders compiled in the background with a start deadline; falls back to
     linkev's wave on context loss, start timeout or under 10 fps (remembered per computer).
@@ -33,24 +347,24 @@ drawing the XMB wave from the console's own lines.qrc (firmware 4.93).
     Display Settings > Resolution.
   - Idle when nothing of it shows (waves and sparkles off over a picture / theme background,
     or the screen covered: body classes mpfull, pv-open, video-open); woken at once by _kick.
-  - Background colour read back asynchronously (backgroundPixelsStart/Take) and cached; the
-    cache key includes the screen-preset overlay state, so colours aren't reused after the
+  - Background color read back asynchronously (backgroundPixelsStart/Take) and cached; the
+    cache key includes the screen-preset overlay state, so colors aren't reused after the
     Music Player's Visualizer Wave fades out.
 - warm.worker.js: the rope warm-up runs in a Web Worker while the shaders compile.
 - wavecache.js (new): Wave Cache - the warmed rope state (Float64, cur + vel, base64) saved per
   settings key (up to 8, most recently used kept), bit-identical to a fresh run.
 - background.js: the console's month / time-of-day background on its own (64 x 36), used for
-  linkev's wave with Month and Time Colors and for icon colours; pre-built 8 s after start and
+  linkev's wave with Month and Time Colors and for icon colors; pre-built 8 s after start and
   kept across Wave Style changes.
 - monthbg.js (new): MaXMB's own measured model of that background (PCA, 20 components) for when
-  lines.qrc isn't there, so linkev's wave still shows the console's month colours.
+  lines.qrc isn't there, so linkev's wave still shows the console's month colors.
 - custom_render_plugin.prx is no longer needed (rope start states are computed, not read from
   the .prx); only lines.qrc is.
-- wave.js: drives either style (Original / linkev); icon auto colour, menu tint and glow taken
-  from the live background; colours refreshed after a screen-preset fade (600 ms, 1.5 s).
+- wave.js: drives either style (Original / linkev); icon auto color, menu tint and glow taken
+  from the live background; colors refreshed after a screen-preset fade (600 ms, 1.5 s).
 - Background Color squares refitted row by row to console captures for the Original style
   (ORIG_SQUARES).
-- intro.js: the boot intro starts on black and the background / wave rise to the menu's colour
+- intro.js: the boot intro starts on black and the background / wave rise to the menu's color
   and stay there (both styles).
 - "linkev's" renamed "linkev" everywhere in the UI.
 
@@ -69,7 +383,7 @@ custom_render_plugin, qgl_canyon_app, qgl_gaia_app and qglbase (firmware 4.93, G
   (the console reads the music before its volume).
 - canyon.js: Canyon on WebGL2 from canyon.qrc - presets and settings (.mnu), normal map, RSX
   programs via rsx.js; terrain commit physics as decompiled (valley shape, damped spring per
-  column, 5 smoothing passes, normals), 128 x 128 quad ring, colour LUT, fog, line effect;
+  column, 5 smoothing passes, normals), 128 x 128 quad ring, color LUT, fog, line effect;
   depth of field (canyon_blur_ammount, 5 x canyon_layer_blur_blur, 256 x 144 x 4 blur
   pyramid) and feedback (canyon_layer_blur.fpo). Preset groups and timings as in
   custom_render (Bir, Voyage, Volcano, Volvic, Blue), terrain reset and 2 s morph on a new song.
@@ -103,7 +417,7 @@ custom_render_plugin, qgl_canyon_app, qgl_gaia_app and qglbase (firmware 4.93, G
 
 
 ------------------------------------------------------------------------
-3. Icons: styles, colour and shading
+3. Icons: styles, color and shading
 ------------------------------------------------------------------------
 
 - Icon Styles now: Original (Reactive), Original, Glow, Glow (Pulsating), Glass (Reactive),
@@ -116,7 +430,7 @@ custom_render_plugin, qgl_canyon_app, qgl_gaia_app and qglbase (firmware 4.93, G
 - iconshade.js: icon shading (glass, glossy) with glow shapes
   per icon (outer border and inner gaps), the same for Icon Sets.
 - Icon Color On/Off (iconColorAll, default On) with Icon Color Pick (_pickHex); Off keeps every
-  icon's own colours.
+  icon's own colors.
 - Icon cache per style; switching style deletes the previous style's cache; Delete Icon
   Shading also clears the shades in memory and re-shades at once.
 - Icons prepared ahead of time while idle; the last session's Icon Style applied before

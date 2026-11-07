@@ -472,7 +472,7 @@ body.gm-sub .item-setval, .item.gm-open .item-setval, .item.gm-band .item-setval
    mask) filled with --icon-color, multiplied over the folder graphic so its
    glass shading is kept. Sits over the folder but UNDER the inner photo. */
 .folder-frame .ff-tint { position: absolute; inset: 0; z-index: 0; pointer-events: none;
-  background: var(--folder-tint, var(--icon-color, #fff)); mix-blend-mode: multiply;
+  background: var(--folder-color, #fff); mix-blend-mode: multiply;
   -webkit-mask: var(--fimg) center/contain no-repeat; mask: var(--fimg) center/contain no-repeat; }
 .folder-frame .ff-thumb { position: absolute; left: 18%; top: 17%; width: 63%; height: 66%;
   object-fit: contain; border-radius: 1px; z-index: 1; }
@@ -1592,7 +1592,15 @@ body.vp-form .form { z-index: 85; }
 
 /* ---------- game options (△) panel — Game captures (E3363-E3366) ---------- */
 .gamemenu { position: fixed; inset: 0; z-index: 60; display: none; pointer-events: none; }
-.gamemenu.show { display: block; }
+.gamemenu.show { display: block; animation: gmIn .15s ease-out; }
+/* opening: the panel fades in where it is, quickly; so does a mini menu
+   (Sort By / Group Content) as it opens */
+@keyframes gmIn { from { opacity: 0; } to { opacity: 1; } }
+.gm-subwrap { position: absolute; inset: 0; }
+.gm-subwrap.gm-fadein { animation: gmIn .15s ease-out; }
+/* closing: the panel, or its mini menu, fades out where it is */
+@keyframes gmOut { from { opacity: 1; } to { opacity: 0; } }
+.gamemenu.show.closing { animation: gmOut .15s ease-in forwards; pointer-events: none; }
 /* no background: a lighter area right of a thin line at x 1253; over the
    game's background: a stripe fading to the right. Both in the Background
    Color, lighter (--menu-rgb, set with the colour) */
@@ -1740,8 +1748,8 @@ body.nomenublur .gamedlg .vp-dlg { background: rgba(6,8,14,0.55); }
 .item:is(.tri-up, .tri-down) .item-label { opacity: 0 !important; }
 /* (and, over the system's own background, not a game's picture: the other
    categories' icons go blurred and the selected one's name hides) */
-body:has(.gamemenu.show:not(.bg)):not(.nomenublur) .cat:not(.sel) { filter: blur(0.4vh); transition: filter .2s ease; }
-body:has(.gamemenu.show:not(.bg)) .cat.sel .cat-label { opacity: 0; }
+body:has(.gamemenu.show.nobg):not(.nomenublur) .cat:not(.sel) { filter: blur(0.4vh); transition: filter .2s ease; }
+body:has(.gamemenu.show.nobg) .cat.sel .cat-label { opacity: 0; }
 /* Hide Game Title on Background: the name fades once the game's background is up */
 .item.bg-notitle .item-label, .item.bg-notitle .game-fmt { opacity: 0 !important; transition: opacity .4s ease; }
 /* console badge (Console in game.json): on the right of the selected game,
@@ -1864,6 +1872,20 @@ body.clock-loading .ib-box { border-color: transparent !important; box-shadow: n
 .mp2-btn .mpi, .mp2-st, .vp-st, .vp-st-rep { filter: url(#icon-tint); }
 .vp-st-num { filter: url(#icon-tint) drop-shadow(0 0 0.6px rgba(0,0,0,0.5)) drop-shadow(1.5px 2px 1px rgba(0,0,0,0.75)); }
 .vp-filmicon, .vp-box img, .vp-arrows img, .vp-ssbtn, .vp-gup, .vp-gdn { filter: url(#icon-tint); }
+/* Icon Styles on the media players' icons (playericons.js redraws the pictures):
+   Glow / Glow (Pulsating): a glow around each, in the Icon Color; Glass
+   (Reactive): see-through like its glass */
+@property --pga { syntax: "<number>"; inherits: true; initial-value: 0.8; }
+/* (each icon glows in the colour of its own edge as it's drawn, as the XMB's
+   icons do: --pg-c, set by playericons.js; until it's known, white) */
+:root[data-glow] :is(.mp2-btn .mpi, .mp2-st, .vp-st, .vp-st-rep, .vp-filmicon, .vp-box img, .vp-arrows img, .vp-ssbtn, .vp-gup, .vp-gdn, .pv-box img, .pv-ss img, .pv-cam) {
+  filter: url(#icon-tint) drop-shadow(0 0 0.35vh rgba(var(--pg-c, 255,255,255), var(--pga)))
+          drop-shadow(0 0 1.1vh rgba(var(--pg-c, 255,255,255), calc(var(--pga) * 0.6))); }
+:root[data-glow] .vp-st-num { filter: url(#icon-tint) drop-shadow(0 0 0.35vh rgba(var(--pg-c, 255,255,255), var(--pga))); }
+/* (Pulsating: the strength, --pga, is set on the player about 6 times a second
+   by playericons.js while it's on screen, and its icons take it: no animation
+   running on every icon every frame) */
+img.pi-clear { opacity: 0.82; }
 /* Text Color: the Volume Control's label and its - / + too (both players) */
 :root.tc-custom .mp2-vol, :root.tc-custom .mp2-vlabel, :root.tc-custom .mp2-vminus, :root.tc-custom .mp2-vplus { color: var(--text); }
 

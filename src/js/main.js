@@ -201,8 +201,15 @@ const HOLD_KEYS = ["l2", "r2", "enter", "up", "down", "left", "right"];
 const kbHeld = Object.fromEntries(HOLD_KEYS.map((k) => [k, false]));
 const holdOf = (code) => { const a = Keybinds.actionFor(code); return HOLD_KEYS.includes(a) ? a : null; };
 const syncKbHeld = () => { for (const k of HOLD_KEYS) if (!_hadPad) Input.held[k] = kbHeld[k]; };
-window.addEventListener("keyup", (e) => { const k = holdOf(e.code); if (k) { kbHeld[k] = false; syncKbHeld(); } });
-window.addEventListener("blur", () => { for (const k of HOLD_KEYS) kbHeld[k] = false; syncKbHeld(); });
+window.addEventListener("keyup", (e) => { _keysDown.delete(e.code); if (e.code === kbRep.code) kbRepStop(); const k = holdOf(e.code); if (k) { kbHeld[k] = false; syncKbHeld(); } });
+window.addEventListener("blur", () => { _keysDown.clear(); kbRepStop(); for (const k of HOLD_KEYS) kbHeld[k] = false; syncKbHeld(); });
+// Keys down now (pressed, not let go yet). Another keydown of one of them is a
+// repeat of the held key, even when it isn't marked as one: some keyboards
+// (or their drivers / helper programs) send a held key's repeats as new presses,
+// and each was taken as a separate press (a row every repeat, with no slide)
+const _keysDown = new Set();
+// (the key event being handled is such a repeat: see "quit" below)
+let _kbRepNow = false;
 // Left Stick keys (W A S D by default): the stick's directions; on a screen
 // that reads the stick itself (the Photo Viewer moves the picture with it)
 // they push the stick while held
@@ -229,18 +236,66 @@ function bindAction(a, e) {
   if (a === "hud") { toggleHud(); return; }
   if (a === "brnexttab") { if (xmb.browserActive) xmb.browserButton("brnexttab"); return; }
   if (a === "brfullscreen") { if (xmb.browserActive) xmb._browserCmd("fullscreen"); return; }
-  if (a === "quit") { call("quit_app").catch(() => {}); return; }   // Close System (F4): no question asked
+  // Close System (F4): no question asked. Not while Change Keybinds is open,
+  // nor a key held down repeating (the key just bound mustn't close the system)
+  if (a === "quit") {
+    // (nor just as the window comes back to the front: a key pressed in
+    // another program (Alt+F4 closing an emulator) reaching the app)
+    if ((e && (e.repeat || _kbRepNow)) || Keybinds.resetHook || performance.now() - _focusedAt < 400) return;
+    call("quit_app").catch(() => {}); return;
+  }
   dispatch(a);
 }
+// A held direction key (arrows, and the Left Stick keys) repeats on the
+// controller's own clock: the first repeat 380 ms after the press, then one
+// every 130 ms, on the display's frames (see the gamepad's dir repeat in
+// pollGamepad). Windows' own key repeat isn't used for them: its pace (about
+// 30 a second, or much slower on some keyboards) and its unevenness, cut down
+// to the controller's pace, made the long lists scroll in bursts.
+const DIR_ACTIONS = ["up", "down", "left", "right", "ls_up", "ls_down", "ls_left", "ls_right"];
+const kbRep = { code: null, a: null, next: 0, raf: 0 };
+function kbRepStop() { if (kbRep.raf) cancelAnimationFrame(kbRep.raf); kbRep.code = kbRep.a = null; kbRep.raf = 0; }
+function kbRepTick() {
+  kbRep.raf = 0;
+  if (!kbRep.code) return;
+  const now = performance.now();
+  if (now >= kbRep.next) {
+    kbRep.next = now + 130;
+    // (as before: the Music Player doesn't take a held key's repeats)
+    if (!document.getElementById("musicplayer")?.classList.contains("show") && !Keybinds.capture) {
+      window.__inputRepeat = true; Input.lastKind = "keyboard";
+      bindAction(kbRep.a, null);
+      window.__inputRepeat = false;
+    }
+  }
+  kbRep.raf = requestAnimationFrame(kbRepTick);
+}
+// when the window last came to the front (see "quit" above)
+let _focusedAt = -1e9;
+window.addEventListener("focus", () => { _focusedAt = performance.now(); });
 window.addEventListener("keydown", (e) => {
   Input.lastKind = "keyboard";
-  // (a key held down repeating, not pressed again: lists speed up only then, see holdAccel)
-  window.__inputRepeat = !!e.repeat;
+  // (a key held down repeating, not pressed again (marked as a repeat or not,
+  // see _keysDown): lists speed up only then, see holdAccel)
+  const rep = e.repeat || _keysDown.has(e.code);
+  _keysDown.add(e.code); _kbRepNow = rep;
+  window.__inputRepeat = rep;
   // Change Keybinds: F11 always restores the default keys (can't be rebound)
   if (Keybinds.resetHook && e.code === "F11") { e.preventDefault(); e.stopPropagation(); Keybinds.resetHook(); return; }
   // the Change Keybinds menu is waiting for a key
   if (Keybinds.capture) { e.preventDefault(); e.stopPropagation(); Keybinds.capture(e.code); return; }
-  { const k = holdOf(e.code); if (k) { kbHeld[k] = true; syncKbHeld(); } if (e.repeat && k && document.getElementById("musicplayer")?.classList.contains("show")) { e.preventDefault(); return; } }
+  { const k = holdOf(e.code); if (k) { kbHeld[k] = true; syncKbHeld(); } if (rep && k && document.getElementById("musicplayer")?.classList.contains("show")) { e.preventDefault(); return; } }
+  // A held direction key repeats on the controller's clock (see kbRepTick):
+  // Windows' own repeats of it are left out
+  // (not in a text field: there the arrows move the typing point as usual)
+  if (!(e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName))) {
+    const a = Keybinds.actionFor(e.code);
+    if (DIR_ACTIONS.includes(a)) {
+      if (rep) { e.preventDefault(); return; }
+      kbRepStop(); kbRep.code = e.code; kbRep.a = a; kbRep.next = performance.now() + 380;
+      kbRep.raf = requestAnimationFrame(kbRepTick);
+    }
+  }
   // in a text field the keys type; Enter / Esc and up / down (to move between
   // the field and the buttons) still work as usual
   if (e.target && e.target.tagName === "INPUT" && !["Enter", "Escape", "ArrowUp", "ArrowDown"].includes(e.key)) return;
@@ -446,6 +501,11 @@ function readGamepad() {
   if (pad) {
     const map = padMap(pad);
     const press = (i) => pad.buttons[i] && pad.buttons[i].pressed;
+    // the intro playing: any button newly pressed skips it (as any key or a
+    // click does; a button already held when it started doesn't)
+    { const any = pad.buttons.some((b) => b && b.pressed);
+      if (any && !gp.anyPrev && window.__introSkip) { Input.lastKind = "controller"; window.__introSkip(); }
+      gp.anyPrev = any; }
     // native feed active: just keep the edge state current, act on nothing
     if (xmb.browserActive && xmb.nativePad) {
       for (const n of ["cross", "circle", "triangle", "square", "select", "start", "l1", "r1", "l2", "r2", "l3", "r3"]) gp.prev[n] = press(map[n]);

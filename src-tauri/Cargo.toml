@@ -1,6 +1,6 @@
 [package]
 name = "ps3xmb"
-version = "1.1.0"
+version = "1.1.4"
 description = "MaXMB"
 authors = ["Maxi"]
 edition = "2021"

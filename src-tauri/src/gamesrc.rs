@@ -907,7 +907,7 @@ fn make_ps3(g: &crate::ps3::Ps3Game, rpcs3: Option<&Path>, games_dir: &Path, ffm
     meta.insert("sourceDir".into(), g.dir.display().to_string().into());
     let _ = fs::write(dir.join("game.json"), serde_json::to_string_pretty(&serde_json::Value::Object(meta)).unwrap_or_default());
     // (PlayStation®Home: started like the other PS3 games, but no art of its own)
-    if !crate::gameart::is_home_title(&title) { crate::ps3::fill_media(&dir, &g.content, ffmpeg); }
+    if !crate::gameart::is_home(&dir) { crate::ps3::fill_media(&dir, &g.content, ffmpeg); }
     Some(dir)
 }
 // A PS3 game is started by a Windows shortcut in its folder, made the way

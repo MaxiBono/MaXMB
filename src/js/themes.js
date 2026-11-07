@@ -114,17 +114,32 @@ export function setActiveThemes(ps3, icons, custom) { p3t = ps3 || null; iconThe
 // (an Icon Theme's icons come first, then a Custom Theme's, then a PS3 theme's)
 export const activeThemes = () => [iconTheme, customTheme, p3t].filter(Boolean);
 
+// The pictures a PS3 theme never replaces in folders (themeIcon `folder`) that
+// a Custom Theme made before it recorded where its icons came from may have
+// taken from one (its p3tIcons, see xmb-themes.js _customP3tIcons)
+export const P3T_FOLDER_PICS = ["icon_gamedata.png", "item_tex_ps3game_folder.png", "music_folder.png", "photo_folder.png", "video_folder.png",
+  "icon_music_album_default.png", "icon_photo_album_default.png", "icon_video_album_default.png", "icon_music_default.png", "icon_photo_default.png", "icon_video_default.png"];
 export const P3T_KEEP = new Set(["icon_music_album_default.png", "icon_photo_album_default.png", "icon_video_album_default.png",
   "icon_music_default.png", "icon_photo_default.png", "icon_video_default.png"]);
-/** The active themes' picture for an icon, if one replaces it: { url, key, opts }. */
-export function themeIcon(name) {
+// Text and Color > Theme Folders: the themes' folder pictures in place of the
+// default ones (Off to begin with)
+let THEME_FOLDERS = false;
+export function setThemeFolders(on) { THEME_FOLDERS = !!on; }
+/** The active themes' picture for an icon, if one replaces it: { url, key, opts }.
+ * `folder`: a media / game folder's own picture: the default one, unless
+ * Theme Folders is on (then any theme's, Icon Set > Custom Theme > PS3 theme).
+ * Otherwise a PS3 theme never replaces the album and "no thumbnail" pictures
+ * (P3T_KEEP), nor do a Custom Theme's that came from one (its fromP3t). */
+export function themeIcon(name, folder = false) {
   if (!name) return null;
+  if (folder && !THEME_FOLDERS) return null;
   const n = sysName(name), lower = n.toLowerCase(), alias = SAME_AS[n];
   for (const t of activeThemes()) {
     // a PS3 theme no longer replaces the media folders' pictures or the
     // pictures media without a thumbnail get (the system's stay)
-    if (t === p3t && P3T_KEEP.has(lower)) continue;
     const file = t.icons[lower] ? lower : alias && t.icons[alias] ? alias : null;
+    const fromP3t = t === p3t || (t === customTheme && !!file && !!t.fromP3t && t.fromP3t.has(file));
+    if (!folder && fromP3t && (P3T_KEEP.has(lower) || P3T_KEEP.has(file))) continue;
     // (the themes' pictures are loaded up front: their blob: copies are used)
     const p = file && t.icons[file];
     if (p) return { url: /^(blob:|data:|https?:|\.\/)/.test(p) ? p : assetUrl(p), key: t.key, file, opts: t.opts || {} };
@@ -133,8 +148,8 @@ export function themeIcon(name) {
 }
 
 /** The picture shown for an icon name: a theme's, or the system's. */
-export function sysUrl(name) {
-  const t = themeIcon(name);
+export function sysUrl(name, folder = false) {
+  const t = themeIcon(name, folder);
   return t ? t.url : sysBase(name);
 }
 

@@ -380,6 +380,14 @@ mod tests {
         assert!(hv["launch"].as_str().unwrap().ends_with(".lnk"), "{hv}");
         assert!(!old.join("Hdd Game.xmbl").exists());
         assert!(lnk(&old, &hv).args.unwrap().ends_with("EBOOT.BIN\""));
+        // the library read: a PS3 game keeps its own source folder (not RPCS3's,
+        // which its shortcut points at) and gives its Title ID
+        let sd = |d: &Path| -> serde_json::Value { serde_json::from_str::<serde_json::Value>(&fs::read_to_string(d.join("game.json")).unwrap()).unwrap()["sourceDir"].clone() };
+        let before = sd(&dg);
+        let listed = crate::library::scan(&[games.display().to_string()], None);
+        assert_eq!(sd(&dg), before, "the source folder stays the game's");
+        assert_ne!(before.as_str(), Some(root.display().to_string().as_str()));
+        assert_eq!(listed.iter().find(|g| g.title == "Disc Game").unwrap().title_id, "BLES00002");
         // a second look adds nothing
         assert!(crate::gamesrc::sync(&[root.display().to_string()], &games, &rec, None, &|_, _| {}).iter()
             .all(|d| !d.file_name().unwrap().to_string_lossy().contains("Game")));
