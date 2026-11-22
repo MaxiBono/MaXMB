@@ -215,10 +215,6 @@ export const BrowserMethods = {
     this._browserOsk({ title: edit ? "Edit Address" : "Enter Address", label: "Address", value: url, submit: "Go" },
       (t) => { if (t.trim()) this._browserCmd("navigate", t.trim()); });
   },
-  _browserSearch() {
-    this._browserOsk({ title: "Search", label: "Search", value: "", submit: "Search" },
-      (t) => { if (t.trim()) this._browserCmd("search", t.trim()); });
-  },
   // a page text field chosen with the controller: the on-screen keyboard
   // straight away, in front of the page (no "Enter Text" box first)
   _browserTypeField(st) {

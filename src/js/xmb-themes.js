@@ -1,7 +1,7 @@
 // XMB: theme (the Xmb class's methods, from xmb.js; put on its prototype there)
 import { MONTH_COLORS } from "./wave.js";
-import { P3T_FOLDER_PICS, P3T_KEEP, THEME_OPTS, THEME_PARTS, activeThemes, setActiveThemes, setThemeFolders, sysUrl, themeIcon, themeOpt } from "./themes.js";
-import { ICON_AUTO_RGB, PLAYER_OWN, __set_PLAYER_OWN, applyIconColorVar, forgetFolderFits } from "./xmb-shared.js";
+import { P3T_FOLDER_PICS, THEME_OPTS, THEME_PARTS, activeThemes, setActiveThemes, setThemeFolders, sysUrl, themeIcon, themeOpt } from "./themes.js";
+import { ICON_AUTO_RGB, __set_PLAYER_OWN, applyIconColorVar, forgetFolderFits } from "./xmb-shared.js";
 import { ThemeBackground } from "./p3tbg.js";
 import { assetUrl, call } from "./api.js";
 import { cachedShade, colorKey, dropThemeShades, loadIconImage, loadedIcon, shadeIcon } from "./iconshade.js";
@@ -37,10 +37,40 @@ export const ThemeMethods = {
       psnStyle: t.psnStyle || null, homeStyle: t.homeStyle || null, customColors: { ...(t.customColors || {}) },
       waveParams: { ...(t.waveParams || {}) }, bgPlaylists: JSON.parse(JSON.stringify(this._bgPlaylists())),
       reactiveBackdrop: !!t.reactiveBackdrop, folderColor: t.folderColor || null, folderColorAll: t.folderColorAll !== false, themeFolders: !!t.themeFolders,
+      infoShadow: t.infoShadow !== false, clockShadow: t.clockShadow !== false,
       // (Icons > Intro Icon / Intro Title: kept with the system's settings, as the
       // intro plays before anyone signs in; a theme carries them too)
       introIcon: this.settings?.behavior?.introIcon || null, introTitle: this.settings?.behavior?.introTitle || null,
     };
+  },
+  // The look shown now kept for the next start (Keep Personalization Options
+  // when Booting): every Theme Setting and the themes in use. Saved only when
+  // it changed.
+  _bootLookSave() {
+    if (!this.user || !this.user.theme || !this.settings) return;
+    const t = this.user.theme, snap = this._themeSnap();
+    // (the photo / video playlists stay: Background Shuffle plays them before anyone signs in too)
+    delete snap.introIcon; delete snap.introTitle; delete snap.customColors;
+    for (const k of ["p3tTheme", "iconTheme", "customTheme", "soundTheme"]) snap[k] = t[k] || null;
+    snap.themeOpts = JSON.parse(JSON.stringify(t.themeOpts || {}));
+    if (JSON.stringify(snap) === JSON.stringify(this.settings.bootLook || null)) return;
+    this.settings.bootLook = snap;
+    call("save_settings", { settings: this.settings }).catch(() => {});
+  },
+  // Before anyone signs in: the last look shown (On), or the original one (Off)
+  async _bootLookApply() {
+    const keep = this.settings?.behavior?.keepBootLook !== false, look = keep ? this.settings?.bootLook || null : null;
+    this._bootPlain = !keep; this._bootTheme = look ? JSON.parse(JSON.stringify(look)) : null;
+    if (!look) { if (!keep) { this.wave.setColor("auto"); this._applyWaveStyle(); } return; }
+    this.wave.setColor(look.backgroundColor || "auto");
+    this._applyWaveStyle();
+    __set_PLAYER_OWN(look.iconColorAll === false); applyIconColorVar(this._pickHex(look));
+    this._applyFolderColor();
+    this._applyTextLook();
+    try { await this._applyThemes(false, true); } catch (e) { console.warn("boot look", e); }
+    this._applyWallpaper();
+    // (Background / Overlay Shuffle: going already, as after signing in)
+    try { await this._restartRotation(); } catch (e) { console.warn("boot look", e); }
   },
   _commitThemePreset(name) {
     if (!name) return;
@@ -78,6 +108,8 @@ export const ThemeMethods = {
     if ("folderColor" in s) t.folderColor = s.folderColor || undefined;
     if ("themeFolders" in s) t.themeFolders = !!s.themeFolders;
     if ("folderColorAll" in s) t.folderColorAll = s.folderColorAll !== false;
+    if ("infoShadow" in s) t.infoShadow = s.infoShadow !== false;
+    if ("clockShadow" in s) t.clockShadow = s.clockShadow !== false;
     if (("introIcon" in s || "introTitle" in s) && this.settings) {
       const b = (this.settings.behavior ||= {});
       b.introIcon = s.introIcon || undefined; b.introTitle = s.introTitle || undefined;
@@ -122,7 +154,7 @@ export const ThemeMethods = {
     else if (ctl === "textcolor" || ctl === "clockcolor" || ctl === "clockiconcolor") this._applyTextLook();
     else if (ctl === "wavecolor" || ctl === "dotcolor") { this._syncVisualizer(); this._applyWaveLook(); }
     else if (ctl === "foldercolor") this._applyFolderColor();
-    else { __set_PLAYER_OWN(this.user?.theme?.iconColorAll === false); applyIconColorVar(this._pickHex()); this._applyXmbwShading(); }
+    else { __set_PLAYER_OWN(this._lookT()?.iconColorAll === false); applyIconColorVar(this._pickHex()); this._applyXmbwShading(); }
   },
   // ---- PS3 Themes, Custom Themes and Icon Themes ----------------------------
   // The themes found (the Themes and Icon folders), read again each time
@@ -152,6 +184,7 @@ export const ThemeMethods = {
         wavesEnabled: true, dotsEnabled: true, wallpaper: null, overlay: null, chromaKey: null, chromaStrength: null, wallpaperFit: null,
         font: null, fontSize: null, textColor: null, clockColor: null, clockIconColor: null, bgShuffle: null, ovShuffle: null, bgInterval: null, ovInterval: null,
         waveParams: {}, psnStyle: null, homeStyle: null, waveEngine: null, iconColorAll: true, folderColor: null, folderColorAll: true, themeFolders: false,
+        infoShadow: true, clockShadow: true,
       }, false);
       this._persistUser();
       await this._runLocked("theme", "Please wait...", () => this._applyThemes(true).catch((e) => console.warn("theme", e)));
@@ -235,7 +268,7 @@ export const ThemeMethods = {
   // the menus again (not at sign-in: they're built afterwards anyway); load:
   // read the folders first.
   async _applyThemes(rebuild = true, load = false) {
-    const t = this.user?.theme || {};
+    const t = this._lookT() || {};
     if (load || !this._themeLists) {
       // (unpacking a new theme takes a moment the first time)
       try { await this._loadThemes(); } catch (e) { this._themeLists = { p3t: [], icon: [], custom: [], sound: [] }; }
@@ -390,7 +423,7 @@ export const ThemeMethods = {
   // Original (kept up to date with it: xmb.js onIconAuto)
   _applyFolderColor() {
     // (Folder Color Off: no tint, every folder in its own colours; white multiplies to nothing)
-    if (this.user?.theme?.folderColorAll === false) { document.documentElement.style.setProperty("--folder-color", "#ffffff"); return; }
+    if (this._lookT()?.folderColorAll === false) { document.documentElement.style.setProperty("--folder-color", "#ffffff"); return; }
     const c = this._tcol("folderColor");
     let hex = c && c !== "auto" ? c : "#" + ICON_AUTO_RGB.map((v) => Math.round(Math.min(1, v) * 255).toString(16).padStart(2, "0")).join("");
     const pc = parseColor(hex);
@@ -398,7 +431,7 @@ export const ThemeMethods = {
     document.documentElement.style.setProperty("--folder-color", hex);
   },
   // a colour setting as it is now: the theme's colour (its Theme Color option) or yours
-  _tcol(prop) { return this._themeColor != null ? this._themeColor : this.user?.theme?.[prop]; },
+  _tcol(prop) { return this._themeColor != null ? this._themeColor : this._lookT()?.[prop]; },
   _themeListItems(kind) {
     const SI = { sys: "icon_setting_item.png" };
     const lists = this._themeLists || { p3t: [], icon: [], custom: [], sound: [] };
@@ -452,7 +485,8 @@ export const ThemeMethods = {
         sv.background && ["tBackground", "PS3 Theme Background", "The background of the PS3 theme this theme was made with (its picture, or the pictures its animated scene is made of). Off: the theme's own background (picture, video or colour) is shown in its place."],
         sv.overlay && t.p3t.scene && ["tOverlay", "PS3 Theme Overlay", "The moving effects of the PS3 theme this theme was made with, drawn over its background (smoke, snow, lights, glows, logos...). With PS3 Theme Background off, they're drawn over the theme's own background and waves."],
       ].filter(Boolean) : [];
-      return parts.length ? [use, { kind: "drill", title: "Theme Settings", icon: SI, sub: "The parts of this theme to use, each On or Off.", childrenFn: () => parts.map(setting) }] : [use];
+      const del = { kind: "action", act: `theme_delete::${key}`, title: "Delete Theme", icon: SI };
+      return parts.length ? [use, { kind: "drill", title: "Theme Settings", icon: SI, sub: "The parts of this theme to use, each On or Off.", childrenFn: () => parts.map(setting) }, del] : [use, del];
     }
     if (snd) return [use];
     // an Icon Set: Icon Effects (its icons with your Icon Style, and see-through
@@ -602,7 +636,7 @@ export const ThemeMethods = {
         for (const [n, p] of Object.entries(sounds)) { const ext = (/\.([a-z0-9]+)$/i.exec(p) || [, "wav"])[1].toLowerCase(); files[`sounds/${n}.${ext}`] = p; }
         await this._runLocked("theme_custom_create", "Creating the theme...", async () => {
           try { await call("custom_theme_create", { name, settings: snap, files, p3t: p3tDir }); this._shotFeedback(`Theme "${name}" created`); }
-          catch (e) { this.audio.play("error", 0.4); this._shotFeedback("The theme couldn't be created"); }
+          catch (e) { this.audio.play("error", 0.4); this._shotFeedback("The theme couldn't be created", "error"); }
           await this._loadThemes();
           const lvl = this._level();
           if (lvl && lvl.items && lvl.items.kindList === "custom") this._rebuildLevel(() => this._themeListItems("custom"));
@@ -610,17 +644,40 @@ export const ThemeMethods = {
       },
       () => { this.textForm.close(); this.overlay = null; });
   },
+  // a Custom Theme's Delete Theme: its .zip in the Themes folder deleted, after an "Are you sure";
+  // one in use stops (your own settings from before it come back)
+  _deleteCustomTheme(key) {
+    const th = this._themeFind("custom", key);
+    if (!th) return;
+    this.overlay = this.confirm;
+    this.confirm.open(`The ${th.name} theme will be deleted.\nAre you sure you want to continue?`, [{ label: "Yes", id: "yes" }, { label: "No", id: "no" }], async (ch) => {
+      this.confirm.close(); this.overlay = null;
+      if (!ch || ch.id !== "yes") return;
+      try { await call("custom_theme_delete", { file: th.file }); }
+      catch (e) { this.audio.play("error", 0.4); this._shotFeedback("The theme couldn't be deleted", "error"); return; }
+      const t = this.user.theme;
+      if (t.themeOpts) delete t.themeOpts[key];
+      if (t.customTheme === key) await this._themeUse("custom", key);
+      else this._persistUser();
+      try { await this._loadThemes(); } catch (e) {}
+      // (back to the Custom Themes, without it)
+      this._back();
+      const lvl = this._level();
+      if (lvl && lvl.items && lvl.items.kindList === "custom") this._rebuildLevel(() => this._themeListItems("custom"));
+      this._shotFeedback("Theme deleted");
+    }, () => { this.confirm.close(); this.overlay = null; });
+  },
   async _extractTheme(key) {
     const th = this._themeFind("p3t", key);
     if (!th) return;
     await this._runLocked(`theme_extract::${key}`, "Extracting the theme...", async () => {
       try { await call("theme_extract", { dir: th.dir, name: th.name }); this._shotFeedback("Theme extracted to the Themes Extracted folder"); }
-      catch (e) { this.audio.play("error", 0.4); this._shotFeedback("The theme couldn't be extracted"); }
+      catch (e) { this.audio.play("error", 0.4); this._shotFeedback("The theme couldn't be extracted", "error"); }
     });
   },
   // ---- Font, Text Color, Info Box Color ------------------------------------
   _applyTextLook() {
-    const t = this.user?.theme || {}, root = document.documentElement;
+    const t = this._lookT() || {}, root = document.documentElement;
     const col = (v) => { const c = parseColor(v); return c && v !== "auto" ? colorHex({ ...c, a: 1 }) : null; };
     // (a PS3 theme's Info Box Color option colours the info box)
     const tc = col(t.textColor), cc = col(this._themeInfoColor || t.clockColor);
@@ -632,6 +689,9 @@ export const ThemeMethods = {
     const kc = col(this._themeClockColor || t.clockIconColor);
     if (kc) { root.style.setProperty("--clock-color", kc); root.classList.add("clk-custom"); }
     else { root.style.removeProperty("--clock-color"); root.classList.remove("clk-custom"); }
+    // (Date and Time Shadows / Clock Shadow: On unless turned off)
+    root.classList.toggle("ib-noshadow", t.infoShadow === false);
+    root.classList.toggle("clk-noshadow", t.clockShadow === false);
     this._scaleFontRules();
     this._textColorRules();
     root.style.setProperty("--font-scale", String((t.fontSize ?? 100) / 100));
@@ -643,6 +703,8 @@ export const ThemeMethods = {
       root.style.setProperty("--ui-font", `"XmbUserFont", "Rodin", "Segoe UI", system-ui, sans-serif`);
       root.classList.add("user-font");
     } else { st.textContent = ""; root.style.removeProperty("--ui-font"); root.classList.remove("user-font"); }
+    // (the trophy pop-up's own window too: trophies.js)
+    this._trophyStyle && this._trophyStyle();
   },
   // Text Color, everywhere: every rule in the stylesheet that paints text a
   // light, neutral colour (white, the light greys, see-through white…) gets a

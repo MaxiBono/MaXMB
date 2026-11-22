@@ -15,7 +15,6 @@
 import { Archive, parseMnu, decodeDds } from "./formats.js";
 import { fetchPs3File } from "./files.js";
 
-const f32 = Math.fround;
 
 let _archive = null;
 export function loadEarth() {

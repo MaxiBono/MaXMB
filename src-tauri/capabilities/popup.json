@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "trophy-popup",
+  "description": "The trophy pop-up's own window (trophypop.rs): it only receives the pop-ups.",
+  "windows": ["trophypop"],
+  "permissions": ["core:event:default"]
+}

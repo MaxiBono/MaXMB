@@ -1,6 +1,6 @@
 // XMB: user (the Xmb class's methods, from xmb.js; put on its prototype there)
 import { Keybinds } from "./keybinds.js";
-import { MEDIA_MODES, NAME_LIMIT, PLAYER_OWN, __set_PLAYER_OWN, USER_SETTING_KEYS, applyIconColorVar, itemIcon } from "./xmb-shared.js";
+import { MEDIA_MODES, NAME_LIMIT, __set_PLAYER_OWN, USER_SETTING_KEYS, applyIconColorVar, itemIcon } from "./xmb-shared.js";
 import { STOCK_AVATARS, VIRTUAL_KB, avatarSrc, isStockAvatar } from "./ui.js";
 import { assetUrl, call } from "./api.js";
 import { isVideoPath } from "./chroma.js";
@@ -67,6 +67,7 @@ export const UserMethods = {
     await this._applyThemes(false, true);
     this._applyWallpaper();
     this._restartRotation();
+    this._bootLookSave();
     await this._buildColumns();
     clearTimeout(showT);
     await this._loadingSettle();
@@ -79,6 +80,11 @@ export const UserMethods = {
       if (wi >= 0) { this.selCat = pi; sel0 = wi; }
     }
     if (this.selCat < 0) this.selCat = 0;
+    // (back after a game whose page Windows ended: that game chosen, or the folder it's in)
+    if (opts.game) {
+      const at = (this.columns[this.selCat].items || []).findIndex((x) => x.game?.folder === opts.game || (x.children || []).some((c) => c.game?.folder === opts.game));
+      if (at >= 0) sel0 = at;
+    }
     this.levels = [{ items: this.columns[this.selCat].items, sel: sel0 }];
     this._render(); this._onSelect();
     this._loadingDone();

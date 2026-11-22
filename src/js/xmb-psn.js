@@ -6,20 +6,20 @@ export const PsnMethods = {
 
   _psnItems() {
     const signedIn = !!(this.user && this.user.psnAccountId);
+    // (the linked accounts and the trophies, read in the background)
+    if (this.user && this._acctFor !== this.user.id) {
+      this._acctFor = this.user.id; this._tSets = null;
+      // (only the saved lists, for the level: the trophies are read again by
+      // the trophy sync, when Trophy Collection is opened)
+      this._acctLoad().then(() => setTimeout(() => { this._trophyLoad(false); this._gamesRenamedPending && this._gamesRenamedPending(); }, 2500));
+    }
     // The auth entry that leads the column. Its identity depends on state, but
     // its position (top) and the four content items below it never change.
     let authItem;
     if (signedIn) {
       // Sign Out lives on this item's options (triangle) menu, not as a child.
-      authItem = { kind: "drill", title: "Account Management", sub: "Adjust settings for your account or for purchases made at PlayStation\u00aeStore.", icon: { sys: "icon_accountmanage.png" }, psnAuth: true, children: [
-          { kind: "action", act: "psn_editid", title: "Edit Online ID", icon: { sys: "icon_accountmanage.png" } },
-          { kind: "action", act: "psn_avatar", title: "Change Avatar", icon: { sys: "icon_accountmanage.png" } },
-          { kind: "action", act: "player_level", title: "Trophy Level", icon: { sys: "icon_accountmanage.png" },
-            sub: "Set the trophy level shown on your own card." },
-          { kind: "drill", title: "Friend Personalization", icon: { sys: "icon_friend.png" },
-            sub: "Choose how many friends appear and design your own friend cards.",
-            childrenFn: this._friendPersonalizationItems },
-        ] };
+      authItem = { kind: "drill", title: "Account Management", sub: "Adjust settings for your account or for purchases made at PlayStation\u00aeStore.", icon: { sys: "icon_accountmanage.png" }, psnAuth: true,
+        childrenFn: this._acctMgmtItems, acctMgmt: true };
     } else {
       // Sign In once THIS user has signed in to (or made) a PSN account
       // before; a user that never has, Sign Up (whatever accounts other users
@@ -38,9 +38,9 @@ export const PsnMethods = {
       authItem,
       { kind: "ph", title: "What's New", icon: { sys: "whatsnew.png" }, bg: "cinfo-bg-whatsnew.jpg",
         sub: "Welcome to PlayStation\u00ae3.\nThe \"What's New\" screen is where to find all the latest PlayStation\u00ae news, updates, plus easy access to the games you've most recently played.\nTo access the \"What's New\" screen, connect to PSN* \u2013 it's free to join and it's your gateway to a world of entertainment, so sign up today!\n\n* Broadband Internet connection required." },
-      // Trophy Collection: description only when signed in to PSN.
-      { kind: "ph", title: "Trophy Collection", icon: { sys: "icon_trophy.png" },
-        sub: signedIn ? "Online Mode\nView trophy information saved on the server." : "" },
+      // Trophy Collection: description only when signed in to PSN; the
+      // games with trophies and their trophies (trophies.js)
+      this._trophyCollectionItem(signedIn),
       // ✕ turns your PlayStation Plus mark (card + top-right box) on and off
       { kind: "action", act: "psplus_toggle", title: "PlayStation\u00aePlus", icon: { sys: "ps_plus.png" } },
       // PlayStation\u00aeHome: its backdrop and description (Original / Modern
@@ -64,17 +64,34 @@ export const PsnMethods = {
     // live without a backend round-trip (fixes stale/refresh-only updates).
     const fcol = this.columns.find((c) => c.id === "friends");
     const pcItem = fcol && fcol.items.find((it) => it.kind === "playercard");
+    // (Connect with Steam Friends: the card shows the Steam account; its colour
+    // and comment are this system's, kept on the PSN account here)
+    const steam = !!(pcItem && pcItem.steam);
     let acct = pcItem && pcItem.acct;
     if (!acct) { const psn = await call("list_psn_accounts"); acct = psn.accounts.find((a) => a.id === this.user.psnAccountId); }
     if (!acct) return;
     const colors = CARD_COLORS.slice();
     this._userLevel ||= 1;
     this.overlay = this.profileCard;
-    this.profileCard.open(acct, { colors, colorPicker: this.colorPicker, msgLimit: MSG_LIMIT, level: this._userLevel, onChange: (a) => {
+    const tp = this._trophyProfile ? this._trophyProfile() : {};
+    const save = async () => {
+      if (!steam) { call("save_psn_account", { account: { ...acct } }); return; }
+      // (only the colour and the comment go to the account here: its Online ID and avatar stay its own)
+      const psn = await call("list_psn_accounts"), own = psn.accounts.find((a) => a.id === this.user.psnAccountId);
+      if (own) call("save_psn_account", { account: { ...own, background: acct.background, comment: acct.comment } });
+    };
+    // ✕ on the comment bubble: the system's text form, then back to the profile
+    const editComment = (cur, done) => {
+      this.overlay = this.textForm;
+      const back = (v) => { this.textForm.close(); this.overlay = this.profileCard; done(v); };
+      this.textForm.open({ title: "Comment", prompt: "Comment", fields: [{ key: "v", label: "Comment", value: cur, max: MSG_LIMIT }] },
+        (out) => back(String(out.v || "")), () => back(null));
+    };
+    this.profileCard.open(acct, { colors, colorPicker: this.colorPicker, level: this._userLevel, editComment, ...tp, onChange: (a) => {
       acct.background = a.background; acct.comment = a.comment;       // live-mutate the item's data
       if (this.columns[this.selCat]?.id === "friends")
         this._renderItems(this.root.clientWidth, this.root.clientHeight); // reflect immediately
-      call("save_psn_account", { account: { ...acct } });            // persist in background
+      save();                                                         // persist in background
     } }, () => { this.overlay = null; this._render(); this._onSelect(); });
   },
   // PSN Sign-Up / Sign-In: the console's Sign-In screen (ui.js PsnSignIn).
@@ -191,11 +208,28 @@ export const PsnMethods = {
       async (out) => { this.textForm.close(); this.overlay = null; await call("save_psn_account", { account: { ...acct, onlineId: [...String(out.onlineId).trim()].slice(0, NAME_LIMIT).join("") || acct.onlineId } }); await this._refreshFriendsCard(); this.cbs.onProfileChange(this.user); },
       () => { this.textForm.close(); this.overlay = null; });
   },
+  // Account Management's options (Connect with Steam Friends on: the name, the
+  // trophy level and the friends come from Steam, so their options aren't there)
+  _acctMgmtItems() {
+    const steam = this._steamOn && this._steamOn();
+    return [
+      ...(steam ? [] : [{ kind: "action", act: "psn_editid", title: "Edit Online ID", icon: { sys: "icon_accountmanage.png" } }]),
+      { kind: "action", act: "psn_avatar", title: "Change Avatar", icon: { sys: "icon_accountmanage.png" } },
+      ...(steam ? [] : [
+        { kind: "action", act: "player_level", title: "Trophy Level", icon: { sys: "icon_accountmanage.png" },
+          sub: "Set the trophy level shown on your own card." },
+        { kind: "drill", title: "Friend Personalization", icon: { sys: "icon_friend.png" },
+          sub: "Choose how many friends appear and design your own friend cards.",
+          childrenFn: this._friendPersonalizationItems }]),
+      // Connect with Steam Friends, Linked Accounts (steamfriends.js)
+      ...this._acctItems(),
+    ];
+  },
   async _psnAvatar() {
     const psn = await call("list_psn_accounts");
     const acct = psn.accounts.find((a) => a.id === this.user.psnAccountId); if (!acct) return;
     this.overlay = this.avatarPicker;
-    this.avatarPicker.open(acct.avatar, { set: "psn" }, async (ref) => {
+    this.avatarPicker.open(acct.avatar, { set: "psn", steam: true }, async (ref) => {
       this.avatarPicker.close(); this.overlay = null;
       await call("save_psn_account", { account: { ...acct, avatar: ref } });
       await this._refreshFriendsCard();

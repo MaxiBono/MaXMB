@@ -1,17 +1,26 @@
 // XMB: iconstyle (the Xmb class's methods, from xmb.js; put on its prototype there)
-import { ICON_AUTO_DEFAULT, __set_ICON_AUTO_DEFAULT, ICON_AUTO_GAIN, __set_ICON_AUTO_GAIN, ICON_AUTO_RGB, __set_ICON_AUTO_RGB, ICON_STYLES, hexToRgb01, iconHTML } from "./xmb-shared.js";
+import { ICON_AUTO_DEFAULT, ICON_AUTO_GAIN, ICON_AUTO_RGB, ICON_STYLES, hexToRgb01, iconHTML } from "./xmb-shared.js";
 import { activeThemes, sysBase } from "./themes.js";
 import { cachedShade, colorKey, dropOtherStyles, edgeColor, exportShades, glassMap, glowMask, importShades, loadIconImage, loadedIcon, pruneShades, shadeIcon, shadeSrc, takeNewShadeCount } from "./iconshade.js";
 import { call } from "./api.js";
 import { glassLayer } from "./glasslayer.js";
 import { setPlayerIconStyle } from "./playericons.js";
+// A glow colour ("r,g,b") too dark to show: lifted toward white to a lightness of 0.7, its hue kept.
+export function glowLift(c) {
+  if (!c) return c;
+  const v = c.split(",").map(Number); if (v.length !== 3 || v.some(isNaN)) return c;
+  const L = (0.299 * v[0] + 0.587 * v[1] + 0.114 * v[2]) / 255;
+  if (L >= 0.7) return c;
+  const t = (0.7 - L) / (1 - L);
+  return v.map((x) => Math.round(x + (255 - x) * t)).join(",");
+}
 
 export const IconStyleMethods = {
 
   // PlayStation®Network icon + title: "original" (the sphere, two-line title)
   // or "modern" (tex_psn, "PlayStation™Network" on one line) — Theme Settings
   _psnLook() {
-    return this.user?.theme?.psnStyle === "modern"
+    return this._lookT()?.psnStyle === "modern"
       ? { catLabel: "PlayStation\u2122Network", icon: "tex_psn.png" }
       : { catLabel: "PlayStation\u00ae\nNetwork", icon: "psn_sphere.png" };
   },
@@ -26,8 +35,8 @@ export const IconStyleMethods = {
   // or "modern" (the newer icon, the lounge backdrop, no rectangle) — Theme
   // Settings > Icons > PlayStation®Home Icon
   _homeLook() {
-    return this.user?.theme?.homeStyle === "modern"
-      ? { icon: { art: "./assets/icons/system/pshome_modern.png", gameArt: true, plainLabel: true }, bg: "cinfo-bg-home-modern.jpg", panelPlain: true }
+    return this._lookT()?.homeStyle === "modern"
+      ? { icon: { art: "./assets/icons/system/pshome_modern.png", gameArt: true, plainLabel: true, artCls: "home-art" }, bg: "cinfo-bg-home-modern.jpg", panelPlain: true }
       : { icon: { sys: "pshome.png" }, bg: "cinfo-bg-home.jpg", panelPlain: false };
   },
   _applyHomeStyle() {
@@ -47,7 +56,14 @@ export const IconStyleMethods = {
   // ahead of time in the background so new submenus appear finished.
   // Icons > Icon Color off: every icon in its own colours (the system's white),
   // Icon Color Pick not used
-  _pickHex(t = this.user?.theme) { return t?.iconColorAll === false ? "#ffffff" : (t?.iconColor || "#ffffff"); },
+  _pickHex(t = this._lookT()) { return t?.iconColorAll === false ? "#ffffff" : (t?.iconColor || "#ffffff"); },
+  _flatIconVar() {
+    try {
+      const rgb = this._iconRgb(), k = rgb[3] || 1;
+      const v = "#" + rgb.slice(0, 3).map((x) => Math.round(Math.min(1, x * k) * 255).toString(16).padStart(2, "0")).join("");
+      if (this._flatIconHex !== v) { this._flatIconHex = v; document.documentElement.style.setProperty("--icon-flat", v); }
+    } catch (e) {}
+  },
   _iconRgb() {
     const hex = this._pickHex();
     // "Original" with Icon Style Default: paler and brighter on a bright
@@ -97,6 +113,10 @@ export const IconStyleMethods = {
   },
   _applyXmbwShading() {
     const on = document.documentElement.getAttribute("data-icons") === "xmbw";
+    // (the section icon drawn flat in the middle of the loading icon: in the colour the icons
+    // themselves are drawn in -- with Icon Color Original and the Original style, paler than the
+    // flat icons' Original, so it showed a stronger colour than the icons around it)
+    this._flatIconVar();
     if (!this.root) return;
     // (the saved shading still loading: shaded once it's in, from it)
     if (on && !this._xsLoadDone) {
@@ -138,12 +158,16 @@ export const IconStyleMethods = {
     // Glow styles: the full-colour pictures (Photo Gallery, PlayStation®Network,
     // PlayStation®Plus, PlayStation®Home, What's New...) glow too, in the
     // colour of their own border (styles.css: .coloricon under data-glow)
+    // (and the YouTube picture of TV/Video Services and PlayStation®Home's Modern icon, drawn as a
+    // game's wide art). A border too
+    // dark to be seen glowing (PlayStation®Network's sphere: a dark navy) is lifted toward white,
+    // keeping its hue, as light as the other icons' glows read.
     if (this._shadeStyle() === "glass" && this._iconStyle() !== "glass") {
-      this.root.querySelectorAll(".coloricon:not([data-gc])").forEach((el) => {
+      this.root.querySelectorAll(".coloricon:not([data-gc]), .art-frame:is(.yt-art, .home-art):not([data-gc])").forEach((el) => {
         const src = el.tagName === "IMG" ? el.getAttribute("src") : el.querySelector("img")?.getAttribute("src");
         if (!src) return;
         el.dataset.gc = "1";
-        loadIconImage(src).then((im) => { const c = edgeColor(im, "c|" + src); if (c && el.isConnected) el.style.setProperty("--glow-c", c); this._syncGlowPulse(); }).catch(() => {});
+        loadIconImage(src).then((im) => { const c = glowLift(edgeColor(im, "c|" + src)); if (c && el.isConnected) el.style.setProperty("--glow-c", c); this._syncGlowPulse(); }).catch(() => {});
       });
     }
   },
@@ -318,7 +342,7 @@ export const IconStyleMethods = {
   // user who never chose), the one in use in the last session on this
   // computer, so the system starts with it, as with the Wave Style
   _iconStyle() {
-    const v = this.user?.theme?.iconStyle || this.settings?.graphics?.iconStyle;
+    const v = this._lookT()?.iconStyle || (this._bootPlainNow() ? null : this.settings?.graphics?.iconStyle);
     return ICON_STYLES.some(([k]) => k === v) ? v : "glasslive";
   },
   // (the Icon Style in use now is the one the system starts with next time)
@@ -361,7 +385,7 @@ export const IconStyleMethods = {
     document.documentElement.removeAttribute("data-glass");   // (no longer needed: the glass layer draws inside each icon)
     // (the reactive glass: drawn by the glass layer while this style is in use)
     // (Glass: the same, clear; Default: filled in with the glass's own pale colour)
-    if (sh === "glasslive") { glassLayer().setFilled(st !== "glassclear"); glassLayer().setBackdrop(!!this.user?.theme?.reactiveBackdrop); glassLayer().start(); } else if (this._glassOn) glassLayer().stop();
+    if (sh === "glasslive") { glassLayer().setFilled(st !== "glassclear"); glassLayer().setBackdrop(!!this._lookT()?.reactiveBackdrop); glassLayer().start(); } else if (this._glassOn) glassLayer().stop();
     this._glassOn = sh === "glasslive";
     // (Glow styles: each icon glows in its own border's colour; the background's
     // light only until that's known)

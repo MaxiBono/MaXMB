@@ -6,7 +6,7 @@ import { sysName, sysBase, sysUrl, themeIcon, activeThemes, P3T_FOLDER_PICS } fr
 import { REAL_WAVE_DEFAULTS, REAL_PARTICLE_DEFAULTS, COMPLEX_EXTRA_DEFAULTS, COMPLEX_GRADIENT_PRESETS } from "./wavegl.js";
 import { setPlayerGlowTint } from "./playericons.js";
 import { loadedIcon } from "./iconshade.js";
-import { parseColor, colorHex, avatarSrc, isMaskAvatar, isStockAvatar } from "./ui.js";
+import { parseColor, colorHex, avatarSrc, isMaskAvatar, isStockAvatar, avatarFillStyle, avatarSlotAttrs } from "./ui.js";
 
 
 // Icon Style choices (Theme Settings), in the order they're listed
@@ -121,7 +121,7 @@ export function consoleBadge(c) {
 export const discIcon = (c) => `./assets/icons/discs/${["PS1", "PS2", "PS3"].includes(c) ? c : "default"}.png`;
 export const DISC_HOLD_MS = 2000;   // the disc game keeps its disc this long when selected
 // (names, Online IDs and messages: up to 255 characters, any character)
-export const MSG_LIMIT = 255;
+export const MSG_LIMIT = 256;   // (the comment's longest: the user's, offline friends', as Steam descriptions are cut)
 export const NAME_LIMIT = 255;
 export const FRIEND_MAX = Infinity;  // most friends that can be shown (no limit)
 
@@ -138,6 +138,8 @@ export const GAME_MEDIA = [
     desc: "The video or GIF that plays in place of the icon while the game is selected." },
   { kind: "music", key: "music", title: "Music", from: ["music"], exts: ["flac", "wav", "ogg", "mp3", "opus", "m4a", "aac"],
     desc: "The song that plays while the game is selected." },
+  { kind: "trophy", key: "trophy", title: "Game Banner in Trophy Collection", from: ["photo"], exts: ["png", "jpg", "jpeg", "webp"],
+    desc: "The game's banner in Trophy Collection." },
 ];
 // the last part of a folder's path ("D:\\SteamLibrary\\steamapps\\common" → "common")
 export const folderName = (p) => String(p || "").split(/[\\/]/).filter(Boolean).pop() || String(p || "");
@@ -601,11 +603,15 @@ export const CARD_INDICATORS = {
 // Friend group order (top to bottom): Received Friend Request, Online, Away,
 // Signed Out, then Sent Friend Request last.
 export const FRIEND_ORDER = { none: 0, sign_in: 1, afk: 2, sign_out: 3, sent_request: 4 };
-// Weighted random trophy level: 1-15 at 80%, 16-20 at 15%, 21-30 at 5%.
+// Weighted random trophy level, as PS3 players' levels went (the PS3's own
+// level table: level 5 is about 2 games completed, 10 about 10, 15 about 33,
+// 20 about 65): 1-5 at 60%, 6-10 at 25%, 11-15 at 10%, 16-20 at 4%, 21-30 at 1%.
 export function randomTrophyLevel() {
   const r = Math.random();
-  if (r < 0.80) return 1 + Math.floor(Math.random() * 15);   // 1-15
-  if (r < 0.95) return 16 + Math.floor(Math.random() * 5);   // 16-20
+  if (r < 0.60) return 1 + Math.floor(Math.random() * 5);    // 1-5
+  if (r < 0.85) return 6 + Math.floor(Math.random() * 5);    // 6-10
+  if (r < 0.95) return 11 + Math.floor(Math.random() * 5);   // 11-15
+  if (r < 0.99) return 16 + Math.floor(Math.random() * 5);   // 16-20
   return 21 + Math.floor(Math.random() * 10);                // 21-30
 }
 // A last-sign-in value drawn from a chosen time bucket (for the friend creator's
@@ -724,7 +730,8 @@ export function cardHTML({ cls, color, avatar, msg, name, game, level, indicator
   const lv = level == null ? "" : level === "-" ? "\u2013" : String(level);
   // speech bubble: only Online / Away cards (and the player's own), only with a message
   const bubble = !!(msg && String(msg).trim()) && (cls === "player" || ind === "sign_in" || ind === "afk");
-  const trophy = `<div class="fc-trophy"><img class="fc-trophy-ic" src="./assets/icons/system/trophy_level.png" alt=""><span class="fc-level">${esc(lv)}</span></div>`;
+  // (a level not known yet: no trophy mark at all, as the console's cards)
+  const trophy = lv === "" ? "" : `<div class="fc-trophy${lv === "\u2013" ? " fc-nolv" : ""}"><img class="fc-trophy-ic" src="./assets/icons/system/trophy_level.png" alt=""><span class="fc-level">${esc(lv)}</span></div>`;
   const diamond = `<div class="fc-diamond"></div>`;
   const dot = `<span class="fc-dot" style="background-image:url('./assets/icons/system/${CARD_INDICATORS[ind]}')"></span>`;
   // side badges (to the left of the card). "Received Friend Request" (none)
@@ -743,12 +750,16 @@ export function cardHTML({ cls, color, avatar, msg, name, game, level, indicator
   // and the bubble gives up width only when a long level needs it.
   return `<div class="fc-root ${cls}" style="--card-bg:${color}">
     ${diamond}${plusBadge}${mboxBadge}
+    ${avatar === "wait:" ? "" : (() => { const sa = avatarSlotAttrs(avatarSrc(avatar)); return `<div class="fc-avunder${isStockAvatar(avatar) ? " av-stock" : ""}"><i style="${sa.style}"></i></div>`; })()}
     <div class="friend-card"></div>
     ${bubble
-      ? `<div class="fc-toprow"><div class="fc-msg"><span class="fc-msgtext mq">${esc(msg)}</span></div>${trophy}</div>
-    <img class="fc-tail" src="./assets/icons/system/bubble_tail.png" alt="">`
+      ? `<div class="fc-toprow"><div class="fc-bub"><div class="fc-msg"><span class="fc-msgtext mq">${esc(msg)}</span></div><i class="fc-tail"></i></div>${trophy}</div>`
       : `<div class="fc-toprow no-msg">${trophy}</div>`}
-    <div class="fc-avslot av-wait"><img class="fc-av${isStockAvatar(avatar) ? " fc-stock" : ""}" src="${avatarSrc(avatar)}" alt=""><div class="fc-glass"></div></div>
+    ${avatar === "wait:"
+      // (a picture still being fetched: the loading icon, turning, in its place -- no picture yet)
+      ? `<div class="fc-avslot av-wait av-pending"><img class="fc-av" alt=""><div class="fc-glass"></div></div>`
+      : (() => { const src = avatarSrc(avatar), sa = avatarSlotAttrs(src), st = isStockAvatar(avatar);
+        return `<div class="fc-avslot av-wait${sa.cls}"><img class="fc-av${st ? " fc-stock" : ""}" style="${avatarFillStyle(src)}" src="${src}" alt=""><div class="fc-glass"></div></div>`; })()}
     <div class="fc-name">${dot}<span class="fc-nm mq">${esc(name)}</span></div>
     ${info}
   </div>`;
@@ -798,7 +809,9 @@ export function restingBody(it) {
 export function resetLabel(it) {
   const lab = it._el && it._el.querySelector(".item-label");
   if (lab) {
-    lab.querySelector(".il-title").textContent = it.title || "";
+    const tl = lab.querySelector(".il-title");
+    // (resting: written again only when it shows something else -- a long name keeps scrolling)
+    if (tl._srcHTML !== undefined || tl.textContent !== (it.title || "")) { tl.textContent = it.title || ""; tl._srcHTML = undefined; }
     lab.querySelector(".il-body").innerHTML = restingBody(it);
   }
   it._labelDirty = false;

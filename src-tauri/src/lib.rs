@@ -23,16 +23,30 @@ mod models;
 mod paths;
 mod photo;
 mod ps3;
+mod iso;
 mod psn;
 mod quitkey;
 mod sections;
 mod settings;
+mod secret;
 mod themes;
 mod thumbs;
 mod p3t;
 mod users;
+mod net;
+mod accounts;
+mod trophies;
+mod trophypop;
+mod steamfriends;
+mod cachesweep;
 #[cfg(test)]
 mod cache_tests;
+#[cfg(test)]
+mod system_tests;
+#[cfg(test)]
+mod campaign_tests;
+#[cfg(test)]
+mod resilience_tests;
 
 use models::{
     Game, LaunchResult, MediaItem, PsnAccount, PsnFile, Settings, User, UsersFile,
@@ -79,8 +93,8 @@ fn scan_library(app: AppHandle) -> Vec<Game> {
     // games in the source folders: new ones get their folder first, so a game
     // added while the app runs shows when the Game column is next opened
     if !s.game_sources.is_empty() && sync_due("games") {
-        let made = gamesrc::sync_modes(&s.game_sources, &app_sources(&s), &paths::games_dir(&app), &paths::game_sources_file(&app), audio::ffmpeg_path(&app).as_deref(), &|_, _| {});
-        queue_scrape(&app, made);
+        // (only found: their art comes from Steam Game Art Scraping and Game Art Database Scraping)
+        gamesrc::sync_modes(&s.game_sources, &app_sources(&s), &paths::games_dir(&app), &paths::game_sources_file(&app), audio::ffmpeg_path(&app).as_deref(), &|_, _| {});
     }
     // PS3 games put into the Games folder by hand: their media and RPCS3
     if sync_due("ps3") {
@@ -118,33 +132,14 @@ fn game_delete(app: AppHandle, folder: String) -> Result<(), String> {
     std::fs::remove_dir_all(&p).map_err(|e| e.to_string())
 }
 
-/// Find games in the source folders now; returns how many were added.
+/// Find games in the source folders now; returns how many were added. (Only found: their art
+/// comes from Game Settings > Steam Game Art Scraping and Game Art Database Scraping.)
 #[tauri::command(async)]
 fn game_sources_sync(app: AppHandle) -> usize {
     let s = current_settings(&app);
-    let made = gamesrc::sync_modes(&s.game_sources, &app_sources(&s), &paths::games_dir(&app), &paths::game_sources_file(&app), audio::ffmpeg_path(&app).as_deref(), &progress_fn(&app, "games"));
-    let n = made.len();
-    // (with Automatic Scraping on, every recognized game the databases haven't
-    // been asked about yet gets its art too, not only the new ones: a key
-    // added after the games were found works for all of them)
-    let mut want = made.clone();
-    for e in gamesrc::load_record(&paths::game_sources_file(&app)).entries {
-        let d = std::path::PathBuf::from(&e.folder);
-        if d.is_dir() && !want.contains(&d) && gameart::needs_db_art(&d, audio::ffmpeg_path(&app).is_some()) { want.push(d); }
-    }
-    queue_scrape(&app, want);
-    n
+    gamesrc::sync_modes(&s.game_sources, &app_sources(&s), &paths::games_dir(&app), &paths::game_sources_file(&app), audio::ffmpeg_path(&app).as_deref(), &progress_fn(&app, "games")).len()
 }
 
-/// Newly recognized games wait here for their art and full name from the
-/// game databases (Automatic Scraping): the app fetches them right after the
-/// recognition, with the menu waiting on it (`game_scrape_queued`).
-static SCRAPE_QUEUE: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
-fn queue_scrape(app: &AppHandle, folders: Vec<std::path::PathBuf>) {
-    let s = current_settings(app).scrape;
-    if folders.is_empty() || !s.auto_on() || !s.any_key() { return; }
-    if let Ok(mut q) = SCRAPE_QUEUE.lock() { q.extend(folders); }
-}
 /// The shape (width / height) of the app's picture: Display Settings >
 /// Resolution, or with Native the screen the app is on.
 fn screen_ratio(app: &AppHandle) -> f64 {
@@ -157,32 +152,98 @@ fn screen_ratio(app: &AppHandle) -> f64 {
         .map(|m| { let s = m.size(); s.width as f64 / s.height.max(1) as f64 })
         .unwrap_or(16.0 / 9.0)
 }
-/// How many recognized games are waiting for their art.
-#[tauri::command]
-fn game_scrape_waiting() -> usize { SCRAPE_QUEUE.lock().map(|q| q.len()).unwrap_or(0) }
-/// Get the art of every game waiting for it, reporting progress ("scrape").
-/// Returns how many got something. Stops when there's no internet.
+/// The games Steam's pictures were put in for once (gameart::steam_standin).
+fn steam_art_done_file(app: &AppHandle) -> std::path::PathBuf { paths::data_dir(app).join("steam_art5.json") }
+/// The games looked up online, as they were then (gameart::lookup_done).
+fn lookups_file(app: &AppHandle) -> std::path::PathBuf { paths::data_dir(app).join("game_lookups.json") }
+/// The game folders in the Games folder, in order.
+fn game_folders(app: &AppHandle) -> Vec<std::path::PathBuf> {
+    let mut out: Vec<std::path::PathBuf> = std::fs::read_dir(paths::games_dir(app)).into_iter().flatten().flatten().map(|e| e.path()).filter(|d| d.is_dir()).collect();
+    out.sort();
+    out
+}
+/// While Steam Game Art Scraping or Game Art Database Scraping runs: a missing icon, background
+/// or banner is looked for again, even one removed before (gameart::may_fill).
+struct Filling;
+impl Filling { fn on() -> Self { gameart::set_fill_missing(true); Filling } }
+impl Drop for Filling { fn drop(&mut self) { gameart::set_fill_missing(false); } }
+
+/// Game Settings > Steam Game Art Scraping: Steam's pictures (gameart::steam_standin) for every
+/// game in the Games folder recognized as a Steam game -- never a PS3 game or PlayStation®Home --
+/// that has no icon, background or Trophy Collection banner, or whose icon or background is its
+/// program's own or the game databases' (Steam's take their place); one chosen by you, a PS3
+/// game's own or Steam's stays. A game unchanged since Steam was last asked about it isn't asked
+/// again. Reports progress ("scrape"); how many got any. The folders that changed are told to the
+/// page ("game-art-changed").
 #[tauri::command(async)]
-fn game_scrape_queued(app: AppHandle) -> usize {
-    let folders: Vec<std::path::PathBuf> = SCRAPE_QUEUE.lock().map(|mut q| std::mem::take(&mut *q)).unwrap_or_default();
-    let s = current_settings(&app).scrape;
-    let ff = audio::ffmpeg_path(&app);
+fn game_art_steam(app: AppHandle) -> Result<usize, String> {
+    if !net::online() { return Err("No internet connection.".into()); }
+    let _fill = Filling::on();
+    let (root, done, looked) = (paths::content_root(&app), steam_art_done_file(&app), lookups_file(&app));
+    let none = std::collections::HashSet::new();
+    let games: Vec<std::path::PathBuf> = game_folders(&app).into_iter()
+        .filter(|d| gameart::steam_art_wanted(d, true, &Default::default(), &none) && (gameart::banner_due(d) || !gameart::lookup_unchanged(&looked, d, None))).collect();
     let progress = progress_fn(&app, "scrape");
-    let total = folders.len();
-    progress(0, total);
-    let mut got = 0;
-    for (i, dir) in folders.iter().enumerate() {
-        if !dir.is_dir() { continue; }
+    progress(0, games.len());
+    let (mut got, mut asked, mut changed) = (0, Vec::new(), Vec::new());
+    for (i, dir) in games.iter().enumerate() {
+        if !net::online() { break; }
+        // (looked for again however many times it was before)
+        gameart::standin_unmark(&done, dir);
+        let name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        match trophies::steam_art_app(&app, dir) {
+            Ok(Some(id)) => { if gameart::steam_standin(&root, &done, dir, &id) { got += 1; changed.push(dir.display().to_string()); } if net::online() { asked.push(dir.clone()); } }
+            Ok(None) => {
+                asked.push(dir.clone());
+                crate::log::line("INFO", "gameart", &format!("Steam pictures for {name}: no Steam game by its name"));
+                gameart::standin_mark_done(&done, dir);
+                // (and no banner of Steam's to put in Trophy Collection: its icon is shown there)
+                gameart::banner_looked(dir);
+            }
+            Err(()) => crate::log::line("WARN", "gameart", &format!("Steam pictures for {name}: Steam's store didn't answer")),
+        }
+        progress(i + 1, games.len());
+    }
+    // (the games Steam was asked about: kept as they are after it, so an unchanged one isn't asked again)
+    gameart::lookup_done(&looked, &asked, &[], &gameart::lookup_setup(&current_settings(&app).scrape));
+    if !changed.is_empty() { let _ = app.emit("game-art-changed", changed); }
+    Ok(got)
+}
+
+/// Game Settings > Game Art Databases > Game Art Database Scraping: the art and full name of
+/// every game in the Games folder from the game databases set up (gameart::scrape): a game with
+/// no icon, or only its program's own, gets one; one with no background gets one (and a video,
+/// with none); one with both of its own is skipped (gameart::needs_db_art). Nothing chosen by you,
+/// a PS3 game's own or Steam's is replaced. A game unchanged since the same databases were last
+/// asked about it isn't asked again. Reports progress ("scrape"); how many got anything.
+#[tauri::command(async)]
+fn game_art_db(app: AppHandle) -> Result<usize, String> {
+    let s = current_settings(&app).scrape;
+    if !s.any_key() { return Err("No game database is set up (Game Settings > Game Art Databases).".into()); }
+    if !net::online() { return Err("No internet connection.".into()); }
+    let _fill = Filling::on();
+    let ff = audio::ffmpeg_path(&app);
+    let (looked, setup) = (lookups_file(&app), gameart::lookup_setup(&s));
+    let games: Vec<std::path::PathBuf> = game_folders(&app).into_iter()
+        .filter(|d| gameart::needs_db_art(d, ff.is_some()) && !gameart::lookup_unchanged(&looked, d, Some(&setup))).collect();
+    let progress = progress_fn(&app, "scrape");
+    progress(0, games.len());
+    let (mut got, mut asked, mut changed) = (0, Vec::new(), Vec::new());
+    for (i, dir) in games.iter().enumerate() {
         let term = std::fs::read_to_string(library::meta_path(dir)).ok()
             .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
             .and_then(|v| v["title"].as_str().map(str::to_string))
             .unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
         let r = gameart::scrape(dir, &term, &s, ff.as_deref(), false, screen_ratio(&app));
         if r.message == "No internet connection." { break; }
-        if r.message.is_empty() { got += 1; }
-        progress(i + 1, total);
+        if r.message.is_empty() { got += 1; changed.push(dir.display().to_string()); }
+        // (asked: something found, or nothing -- the internet still there, so it was asked)
+        if (r.message.is_empty() || r.message == "Nothing was found for this game.") && net::online() { asked.push(dir.clone()); }
+        progress(i + 1, games.len());
     }
-    got
+    gameart::lookup_done(&looked, &[], &asked, &setup);
+    if !changed.is_empty() { let _ = app.emit("game-art-changed", changed); }
+    Ok(got)
 }
 
 /// Game Settings > Icon / Background / Video / Music: use `path` (None removes it).
@@ -203,6 +264,98 @@ fn game_scrape(app: AppHandle, folder: String, title: String) -> gameart::Scrape
     gameart::scrape(std::path::Path::new(&folder), &title, &s, ff.as_deref(), true, screen_ratio(&app))
 }
 
+/// A game renamed by hand (Game Settings > Title): looked up again under its new name, its
+/// art in the game databases and its trophies' source -- only a game known by its name
+/// alone (one with IDs of its own, a Steam emulator's or Steam's files, a store's files or a
+/// PS3 game's data is found by those, whatever it's called). What's found replaces what the
+/// lookups had given it; with nothing found, or the same, it keeps what it has. Without
+/// the internet it waits (content\data\renamed_pending.json) for a start with it.
+/// "id": known by more than its name, nothing to do; "pending": waiting for the internet;
+/// "art": new art was put in; "done": looked up, its art as it was.
+#[tauri::command(async)]
+fn game_renamed(app: AppHandle, user: String, folder: String, title: String, launch: String) -> String {
+    let g = trophies::GameRef { folder: folder.clone(), title: title.clone(), launch, stamp: String::new() };
+    let file = paths::data_dir(&app).join("renamed_pending.json");
+    if trophies::known_without_name(&app, &user, &g) { renamed_pending_set(&file, &folder, false); return "id".into(); }
+    if !net::online() { renamed_pending_set(&file, &folder, true); return "pending".into(); }
+    renamed_pending_set(&file, &folder, false);
+    trophies::renamed(&folder);
+    let s = current_settings(&app).scrape;
+    let dir = std::path::Path::new(&folder);
+    if !s.any_key() || !dir.is_dir() { return "done".into(); }
+    let r = gameart::scrape_renamed(dir, &title, &s, audio::ffmpeg_path(&app).as_deref(), screen_ratio(&app));
+    if r.icon || r.background || r.preview { "art".into() } else { "done".into() }
+}
+/// Game Settings > Title changed: the game's own folder in content\Games takes the name typed
+/// (the characters a folder can't have left out; a name another game's folder has: " (2)"...),
+/// and everything that names the folder follows it (the recognized games' list, Steam's pictures'
+/// and the renamed games' lists, the trophies' kept source and list). Its new path; the same
+/// one when nothing had to change (or it couldn't be renamed: in use, say).
+#[tauri::command(async)]
+fn game_folder_rename(app: AppHandle, folder: String, title: String) -> Result<String, String> {
+    let dir = std::path::PathBuf::from(&folder);
+    if !dir.is_dir() { return Err("game folder not found".into()); }
+    let cur = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let key = |p: &std::path::Path| p.display().to_string().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let target = match gamesrc::rename_game_folder(&dir, &title) {
+        Ok(Some(t)) => t,
+        Ok(None) => return Ok(folder),
+        Err(e) => {
+            log::line("WARN", "games", &format!("the folder of \"{}\" couldn't take its new name: {e}", title.chars().take(80).collect::<String>()));
+            return Ok(folder);
+        }
+    };
+    let new = target.display().to_string();
+    gamesrc::folder_renamed(&paths::game_sources_file(&app), &folder, &new);
+    for f in [steam_art_done_file(&app), paths::data_dir(&app).join("renamed_pending.json")] {
+        let Ok(t) = std::fs::read_to_string(&f) else { continue };
+        let Ok(mut l) = serde_json::from_str::<Vec<String>>(&t) else { continue };
+        let mut changed = false;
+        for x in l.iter_mut() { if key(std::path::Path::new(x.as_str())) == key(&dir) { *x = new.clone(); changed = true; } }
+        if changed { let _ = std::fs::write(&f, serde_json::to_string(&l).unwrap_or_default()); }
+    }
+    trophies::folder_renamed(&app, &folder, &new);
+    log::line("INFO", "games", &format!("a game's folder renamed: \"{cur}\" -> \"{}\"", target.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()));
+    Ok(new)
+}
+/// Whether a game is told apart by more than its name (its own IDs, a Steam emulator's or
+/// Steam's files, a store's files, a PS3 game's data): renaming it changes nothing then.
+#[tauri::command(async)]
+fn game_known_by_id(app: AppHandle, user: String, folder: String, title: String, launch: String) -> bool {
+    trophies::known_without_name(&app, &user, &trophies::GameRef { folder, title, launch, stamp: String::new() })
+}
+/// The games renamed while there was no internet, looked up now that there is (at a start):
+/// the folders of the ones done (none without the internet: they keep waiting).
+#[tauri::command(async)]
+fn game_renamed_pending(app: AppHandle, user: String) -> Vec<String> {
+    let file = paths::data_dir(&app).join("renamed_pending.json");
+    let list = renamed_pending(&file);
+    if list.is_empty() || !net::online() { return Vec::new(); }
+    let mut done = Vec::new();
+    for folder in list {
+        let dir = std::path::PathBuf::from(&folder);
+        if !dir.is_dir() { renamed_pending_set(&file, &folder, false); continue; }
+        let meta: serde_json::Value = std::fs::read_to_string(library::meta_path(&dir)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        let title = meta["title"].as_str().map(str::to_string).unwrap_or_else(|| dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default());
+        let r = game_renamed(app.clone(), user.clone(), folder.clone(), title, String::new());
+        if r != "pending" { done.push(folder); }
+    }
+    done
+}
+fn renamed_pending(file: &std::path::Path) -> Vec<String> {
+    std::fs::read_to_string(file).ok().and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok()).unwrap_or_default()
+}
+fn renamed_pending_set(file: &std::path::Path, folder: &str, on: bool) {
+    let mut list = renamed_pending(file);
+    let had = list.iter().any(|f| f == folder);
+    if on == had { return; }
+    if on { list.push(folder.to_string()); } else { list.retain(|f| f != folder); }
+    if list.is_empty() { let _ = std::fs::remove_file(file); return; }
+    if let Some(d) = file.parent() { let _ = std::fs::create_dir_all(d); }
+    let tmp = file.with_extension("tmp");
+    if std::fs::write(&tmp, serde_json::to_string(&list).unwrap_or_default()).is_ok() { let _ = std::fs::rename(&tmp, file); }
+}
+
 /// Games created from the source folders (for the settings list).
 #[tauri::command(async)]
 fn game_sources_detected(app: AppHandle) -> Vec<gamesrc::Detected> {
@@ -219,6 +372,12 @@ fn game_sources_delete(app: AppHandle, folder: String) -> Result<(), String> {
 #[tauri::command(async)]
 fn game_sources_remove(app: AppHandle, source: String) -> usize {
     gamesrc::remove_source(&paths::game_sources_file(&app), &paths::games_dir(&app), &source)
+}
+
+/// A source folder added: its games whose folders are gone are made again (see gamesrc).
+#[tauri::command(async)]
+fn game_sources_added(app: AppHandle, source: String) -> usize {
+    gamesrc::source_added(&paths::game_sources_file(&app), &source)
 }
 
 /// Native folder picker; None when cancelled.
@@ -424,14 +583,24 @@ fn pick_file(app: AppHandle, title: String, name: String, exts: Vec<String>) -> 
     path?.into_path().ok().map(|p| p.display().to_string())
 }
 
-#[tauri::command]
+// (on a thread of its own, not the window's: a game that must run as administrator waits
+// there for the answer to Windows' prompt, launcher.rs run_as_admin)
+#[tauri::command(async)]
 fn launch_game(app: AppHandle, folder: String, launch: String, args: Vec<String>, program: Option<bool>) -> LaunchResult {
     // the game's window may take the focus once it opens (the app keeps
     // showing black, silent, until then)
     #[cfg(windows)]
     launcher::allow_game_foreground();
     let r = launcher::launch(&folder, &launch, &args);
+    // (in the log: what was started, or why it couldn't be)
+    let name = std::path::Path::new(&folder).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    if r.ok { log::line("INFO", "game", &format!("started \"{name}\" ({launch}), pid {:?}", r.pid)); if let Some(p) = r.pid { launcher::note_quick_exit(p, name.clone()); } }
+    else { log::line("WARN", "game", &format!("\"{name}\" couldn't be started ({launch}): {}", r.message)); }
     if r.ok {
+        // (the game played, for a window made anew after it: focus.rs resume_after_game)
+        focus::set_last_game(&folder);
+        // its trophies are watched closely while it runs
+        trophies::set_running(&app, Some(folder.clone()));
         // game mode: the app idles until the game has ended, then comes back by itself
         // (a game started through its launcher: followed by its own folder,
         // and not by Battle.net, which keeps running after the game ends)
@@ -471,7 +640,16 @@ fn save_user(app: AppHandle, user: User) -> Result<(), String> {
 
 #[tauri::command]
 fn delete_user(app: AppHandle, id: String) -> Result<(), String> {
-    users::delete(&paths::users_file(&app), &id)
+    users::delete(&paths::users_file(&app), &id)?;
+    // (what was kept of the user's accounts, trophies and Steam Friends goes with them)
+    let a = app.clone();
+    std::thread::spawn(move || {
+        accounts::forget_user(&a, &id);
+        trophies::forget_user_files(&a, &id);
+        steamfriends::forget_user_files(&a, &id);
+        steamfriends::prune_own(&a);
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -560,6 +738,17 @@ fn custom_theme_create(app: AppHandle, name: String, settings: serde_json::Value
     let mut list: Vec<(String, std::path::PathBuf)> = files.into_iter().map(|(k, v)| (k, std::path::PathBuf::from(v))).collect();
     if let Some(d) = p3t { list.extend(themes::p3t_folder_files(std::path::Path::new(&d))); }
     themes::create_custom(&paths::themes_dir(&app), &name, &settings, &list).map(|p| p.display().to_string())
+}
+
+/// A Custom Theme's Delete Theme: its .zip (only one in the Themes folder) deleted; its unpacked
+/// copy goes at the next listing (themes::list_custom).
+#[tauri::command(async)]
+fn custom_theme_delete(app: AppHandle, file: String) -> Result<(), String> {
+    let root = paths::themes_dir(&app).canonicalize().map_err(|e| e.to_string())?;
+    let p = std::path::PathBuf::from(&file).canonicalize().map_err(|e| e.to_string())?;
+    let zip = p.extension().map(|e| e.eq_ignore_ascii_case("zip")).unwrap_or(false);
+    if !zip || !p.is_file() || !p.starts_with(&root) { return Err("only a Custom Theme in the Themes folder can be deleted".into()); }
+    std::fs::remove_file(&p).map_err(|e| e.to_string())
 }
 
 /// Put everything a PS3 theme has into content/Themes Extracted/<its name>.
@@ -723,6 +912,34 @@ fn app_info(app: AppHandle) -> serde_json::Value {
 /// The Photos folder (screenshots are saved in its "Screenshots" folder).
 pub(crate) fn active_photos_dir(app: &AppHandle) -> std::path::PathBuf {
     paths::photos_dir(app)
+}
+
+/// The data files' secrets (the game databases' keys) written plain by an older version: written
+/// again, sealed (secret.rs). The local accounts (the users' saved Sign-In, the local
+/// PlayStation®Network accounts) sealed by an older version: written again, plain (users.rs, psn.rs).
+fn secret_migrate(app: &AppHandle) {
+    let plain = |f: &std::path::Path, keys: &[&str]| -> bool {
+        let Ok(t) = std::fs::read_to_string(f) else { return false };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&t) else { return false };
+        fn walk(v: &serde_json::Value, keys: &[&str]) -> bool {
+            match v {
+                serde_json::Value::Object(m) => m.iter().any(|(k, x)| (keys.contains(&k.as_str()) && match x {
+                    serde_json::Value::String(s) => !s.is_empty() && !s.starts_with("dpapi:"),
+                    serde_json::Value::Object(_) => true,
+                    _ => false,
+                }) || walk(x, keys)),
+                serde_json::Value::Array(a) => a.iter().any(|x| walk(x, keys)),
+                _ => false,
+            }
+        }
+        walk(&v, keys)
+    };
+    let sf = paths::settings_file(app);
+    if plain(&sf, &["sgdbKey", "tgdbKey", "rawgKey"]) { if let Some(s) = settings::load(&sf) { let _ = settings::save(&sf, &s); } }
+    let pf = paths::psn_file(app);
+    if std::fs::read_to_string(&pf).map(|t| t.contains("\"dpapi:")).unwrap_or(false) { let _ = psn::save(&pf, &psn::load(&pf)); }
+    let uf = paths::users_file(app);
+    if std::fs::read_to_string(&uf).map(|t| t.contains("\"dpapi:")).unwrap_or(false) { let _ = users::save(&uf, &users::load(&uf)); }
 }
 
 /// Load settings, always ensuring the in-app content folders are present so the
@@ -906,11 +1123,7 @@ pub(crate) fn build_main_window(handle: &AppHandle) -> tauri::Result<()> {
     // report could stay stuck, leaving the window invisible (see-through)
     // and the page asleep once the game had closed. Losing the focus or
     // being minimized still quiets the app (see main.js).
-    let mut args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,RestrictGamepadAccess,CalculateNativeWinOcclusion --autoplay-policy=no-user-gesture-required");
-    if !current_settings(handle).behavior.vsync {
-        // VSync off: don't tie frames to the display refresh
-        args.push_str(" --disable-gpu-vsync --disable-frame-rate-limit");
-    }
+    let args = webview_args(handle);
     tauri::WebviewWindowBuilder::new(handle, "main", tauri::WebviewUrl::App("index.html".into()))
         .title("MaXMB")
         .inner_size(1280.0, 720.0)
@@ -926,6 +1139,20 @@ pub(crate) fn build_main_window(handle: &AppHandle) -> tauri::Result<()> {
         .data_directory(paths::webview_dir(handle))
         .build()?;
     Ok(())
+}
+
+/// The menus' browser settings (the trophy pop-up's window shares its browser data, so it uses the same).
+pub fn webview_args(handle: &AppHandle) -> String {
+    // (--disable-lcd-text: every text smoothed alike, in shades of grey. Without it, text drawn
+    // on something solid -- a friend's comment in its white bubble, some names and games -- was
+    // drawn with Windows' coloured edges (ClearType), sharp and jagged beside the rest, which is
+    // drawn over see-through layers and smoothed in grey)
+    let mut args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,RestrictGamepadAccess,CalculateNativeWinOcclusion --autoplay-policy=no-user-gesture-required --disable-lcd-text");
+    if !current_settings(handle).behavior.vsync {
+        // VSync off: don't tie frames to the display refresh
+        args.push_str(" --disable-gpu-vsync --disable-frame-rate-limit");
+    }
+    args
 }
 
 pub fn run() {
@@ -957,6 +1184,8 @@ pub fn run() {
         .setup(|app| {
             // the log (content\Logs\MaXMB.log), first of all
             log::init(app.handle());
+            // (secrets written plain by an older version: sealed now, secret.rs)
+            { let h = app.handle().clone(); std::thread::spawn(move || secret_migrate(&h)); }
             // small picture copies: where they're kept, and the ones of pictures
             // that are gone (or changed) deleted, in the background
             // (the temporary caches live in Windows' Temp folder now: an older
@@ -965,7 +1194,14 @@ pub fn run() {
             {
                 let h = app.handle().clone();
                 thumbs::IN_APP_DIR.store(current_settings(&h).behavior.cache_in_app_dir, std::sync::atomic::Ordering::Relaxed);
-                std::thread::spawn(move || { thumbs::sweep(&paths::thumbs_dirs(&h)); });
+                std::thread::spawn(move || {
+                    thumbs::sweep(&paths::thumbs_dirs(&h));
+                    // (the decoded songs and converted videos of files changed or gone since)
+                    audio::sweep_decoded(&h);
+                    video::sweep_copies(&h);
+                    // (the media files read before that are gone: forgotten)
+                    medialib::forget_missing(&paths::data_dir(&h).join("media_index.json"));
+                });
             }
             let handle = app.handle();
             paths::ensure_content_tree(handle);
@@ -979,6 +1215,12 @@ pub fn run() {
             // the Close System key (F4): closes the app at once, even if the page is stuck
             quitkey::start(handle.clone());
             build_main_window(handle)?;
+            // (PS3 disc images: their files copied into the app's own cache)
+            ps3::set_iso_cache(paths::data_dir(handle).join("cache").join("ps3iso"));
+            // trophies: watched while their games run (trophies.rs); Steam
+            // Friends' pictures from a session that didn't close cleanly: gone
+            trophies::start_watch(handle.clone());
+            steamfriends::clear_cache(handle);
             // undo a browser session that didn't get cleaned up + daily LibreWolf update
             browser::on_app_start(handle);
             let s = current_settings(handle);
@@ -1036,8 +1278,9 @@ pub fn run() {
             game_sources_detected,
             game_sources_delete,
             game_sources_remove,
+            game_sources_added,
             pick_folder,
-            launch_game, game_mode_end, focus::page_focus, focus::page_alive, pick_file, image_has_alpha, game_media_set, game_scrape, game_scrape_waiting, game_scrape_queued,
+            launch_game, game_mode_end, focus::page_focus, focus::page_alive, focus::resume_after_game, pick_file, image_has_alpha, game_media_set, game_scrape, game_art_steam, game_art_db, game_renamed, game_renamed_pending, game_known_by_id, game_folder_rename,
             list_users,
             create_user,
             save_user,
@@ -1055,6 +1298,7 @@ pub fn run() {
             wave_cache_save,
             video::video_info,
             video::video_prepare,
+            video::video_drop_copy,
             video::video_plan,
             audio::music_deletable,
             audio::music_delete,
@@ -1069,7 +1313,7 @@ pub fn run() {
             themes_icon,
             themes_sound,
             themes_custom,
-            custom_theme_create,
+            custom_theme_create, custom_theme_delete,
             theme_extract,
             list_media,
             media_fingerprint,
@@ -1094,13 +1338,34 @@ pub fn run() {
             screenshot::take_screenshot,
             screenshot::browser_snapshot,
             list_psn_avatars,
+            accounts::accounts_view,
+            accounts::account_set,
+            accounts::account_login,
+            accounts::account_logout,
+            accounts::account_remove_all,
+            trophies::trophies_cached,
+            trophies::trophies_refresh,
+            trophies::trophies_sync_cancel,
+            trophies::trophies_game_off,
+            trophies::trophies_game_has_local,
+            trophies::account_games,
+            trophies::account_game_set,
+            trophies::trophies_sync_progress,
+            trophies::trophies_sync_needed,
+            steamfriends::steam_friends,
+            steamfriends::steam_friend_levels,
+            steamfriends::steam_friend_levels_kept, steamfriends::steam_friend_details,
+            steamfriends::steam_own_avatar,
+            trophypop::trophy_pop_style,
         ])
         .build(tauri::generate_context!())
         .expect("error while running MaXMB")
-        .run(|_app, ev| {
+        .run(|app, ev| {
             // (the window closed only to be made anew: the app keeps running)
-            if let tauri::RunEvent::ExitRequested { api, code: None, .. } = ev {
+            if let tauri::RunEvent::ExitRequested { api, code: None, .. } = &ev {
                 if focus::remaking() { api.prevent_exit(); }
             }
+            // closing: Steam Friends' pictures deleted
+            if let tauri::RunEvent::Exit = ev { steamfriends::clear_cache(app); }
         });
 }

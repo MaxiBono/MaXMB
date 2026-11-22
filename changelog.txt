@@ -1,3 +1,507 @@
+2.0.0:
+
+
+------------------------------------------------------------------------
+1. Trophy Collection (new)
+------------------------------------------------------------------------
+
+New: PlayStation Network > Trophy Collection, the trophy pop-up and the trophy level counted
+from the trophies earned. trophies.rs (new) reads them; trophies.js / trophies.css (new) show
+them. How the stores are read follows SuccessStory (Lacro59, MIT), including its Steam emulator
+reading (from its history: removed in 3.7.1).
+
+- Only the games in the system have trophies (content\Games, by hand or from Game Recognition).
+  Each game's source is found once and kept per user (cache\trophies\sources\<user>.json, with
+  the game's stamp: found again when the game changes), from where the game came from:
+  - PS3 games: RPCS3's own trophy folder (dev_hdd0\home\<user>\trophy\<NP communication ID>:
+    TROPCONF.SFM, TROPUSR.DAT, TROPxxx.PNG), found through the game's TROPDIR (np_comm_id), or
+    by the game's name (rpcs3_by_name, likeness 0.85 or more). Their own grades and Platinum.
+    - The RPCS3 roots looked in (rpcs3_roots): the game's own install, a dev_hdd0 kept
+      elsewhere (vfs.yml), every RPCS3 Game Recognition knows (game_sources.json), and first
+      the RPCS3 the game's own shortcut starts (a disc image or a game outside RPCS3 is played
+      in the one its shortcut names: Minecraft with another install's RPCS3).
+    - Not played yet: the game's own list, unpacked once from its TROPHY.TRP into
+      cache\trophies\trp\<NP ID> (trp_near, trp_files, trp_dir), nothing won; looked at again
+      every 6 s while it runs, until RPCS3 makes its own folder (its trophies won meanwhile pop up).
+    - trp_files: the entries read after the TRP's 0x40-byte header (as RPCS3 reads it; 0x60
+      tried too), so TROPCONF.SFM, usually the first entry, is found.
+    - Disc images (.iso): their copied files (ps3::iso_content) give the NP ID and the list.
+    - A game with no list of its own (an unofficial version, a recompilation): the official
+      game's, by its name, in RPCS3 or on Steam.
+  - Steam games: the achievement list (names, descriptions, hidden, pictures, players' share)
+    from Steam's public list (IPlayerService/GetGameAchievements, no account; kept a week in
+    cache\trophies\schemas, used however old offline), else Steam's own UserGameStatsSchema,
+    else an emulator's own steam_settings\achievements.json. Which are won:
+    - Steam's own files (appcache\stats\UserGameStats_<account>_<appid>.bin, binary KeyValues),
+      for the Steam ID of Linked Accounts or the account signed in to Steam (loginusers.vdf).
+    - The Steam emulators' files (emu_files / parse_emu): Goldberg / GSE (AppData, or the game's
+      own folder through steam_settings\local_save.txt), CODEX, RUNE, EMPRESS, OnlineFix,
+      SKIDROW, CreamAPI, SmartSteamEmu (stats.bin, names by CRC32), ALI213, Hoodlum,
+      DARKSiDERS, RLD! / 3DM, TENOKE (SteamData\user_stats.ini / achievements.toml, TOML lines,
+      or %APPDATA%\TENOKE\<appid>), GreenLuma (the registry). INI / JSON / TOML / binary forms,
+      hex and shortened times.
+    - The app ID: Game Recognition's, the game's store link, steam_appid.txt, an emulator's
+      .ini (steam_emu.ini, steam_api.ini, cream_api.ini, ColdClientLoader.ini, SmartSteamEmu.ini,
+      ALI213.ini, valve.ini, SteamConfig.ini, hlm.ini, ds.ini, OnlineFix.ini's RealAppId,
+      tenoke.ini's "id", in a Unity game's <name>_Data\Plugins\x86_64 too), or Steam's store by
+      the game's name (steam_by_name: kept in schemas\names.json, a miss asked again after a
+      week, one search every 1.2 s, a store not answering left alone for a minute).
+    - With a Steam Web API key: the account's own (ISteamUserStats/GetPlayerAchievements), only
+      for a game with nothing on this computer.
+  - Epic Games: the game's list (GraphQL productAchievementsRecordBySandbox, kept 30 minutes)
+    and the account's won ones, signed in; the namespace from the game's .mancpn / .egstore, or
+    the account's game of its name.
+  - GOG: gameplay.gog.com's achievements of the game's client ID (goggame-<id>.info / .id, or
+    the build's manifest), signed in; without signing in, a public profile's (by its username).
+  - RetroAchievements: the game played on the account with the game's name.
+- Grades for stores without them (grade_for): under 8 % of players Gold, under 17 % Silver,
+  else Bronze. A Platinum added to every game but PS3 games ("<Game> Platinum Trophy", won on
+  the day of the last other one); add-on (DLC) trophies marked, listed last, not needed for it.
+- The trophy record (cache\trophies\earned): what's been seen won stays won (a file deleted or
+  damaged, an emulator's file gone, another emulator's later time), and an account's trophies
+  are forgotten with the account.
+- The sync (trophies_sync_needed / trophies_refresh): the sync screen ("Performing the sync
+  operation for trophy information... Please wait.", its progress, Circle Cancel) when
+  something changed since the last one or the stores are due (every 10 minutes); each game read
+  again only when its files, accounts or source changed (sig_for), a game with nothing new
+  straight in; without any game's trophies, Trophy Collection isn't entered (error sound).
+- Account Games (Account Management > Account Games): the accounts' games that aren't in the
+  system, listed as "acct:<store>:<id>", each On / Off; their art from the stores.
+- Trophies Off in Game Settings: the game out of Trophy Collection and the level at once; a
+  game whose won trophies were seen on this computer asks first (they're deleted with it). A
+  game known only by its name, renamed: told first that its trophies may change, and looked up
+  again under the new name (lib.rs game_renamed; without the internet: renamed_pending.json).
+- Lists: games alphabetically (copies numbered), the game's console mark, its progress (the
+  share of its trophies won by number, the Platinum included, rounded down) with the bar and the
+  Platinum mark once won; a trophy's grade glyph, the locked picture with the padlock (one
+  picture the trophy's size, tex_lock_tile.svg, so it never moves apart from it), hidden ones
+  as the console's; Triangle menus; a trophy's / a game's Information screens; the user's
+  mini card at the top right; long names scrolling before the percentage.
+- The trophy level (PS3 table, 1-100: Bronze 15, Silver 30, Gold 90, Platinum 180 points) on
+  the user's card and profile, from every game with trophies.
+- Cache Management: Delete Trophy Cache (the lists, pictures and what the stores said;
+  never the trophies won).
+- Game banners: a game's Trophy Collection banner is a file of its own, trophy.* (png, jpg,
+  jpeg, webp) in its folder (gameart.rs KINDS, library.rs, models.rs Game.trophy), chosen in
+  Game Settings > Game Information > a game > Game Banner in Trophy Collection (from Photos,
+  "The game's banner in Trophy Collection."). A Steam game's is Steam's main capsule
+  (capsule_616x353.jpg, gameart.rs STEAM_BANNER) through Steam Game Art Scraping; a game with
+  none shows its icon (trophies.js). Always shown whole, never stretched.
+- A game's Information screen and the game's info in its trophy list show the game's icon (not
+  its banner): a game of an account keeps its store's icon with its list (TrophySet.game_icon,
+  acct_icon, kept when the cache is pruned).
+- The rows of a game's trophies and of the games are a fixed size while chosen (157 x 157 for a
+  trophy, the widest game's size for a game), the picture growing inside: the chosen trophy's
+  grade, name, description and date no longer shake as the picture grows. Their rows have no
+  slide of their own (trophies.css .item.item-trophy: no bounce past their place, a menu's
+  opening slide included); their small nudges with the Triangle menus still slide.
+
+
+------------------------------------------------------------------------
+2. Trophy pop-ups and watching the games
+------------------------------------------------------------------------
+
+- trophypop.rs (new): "You have earned a trophy." as the console's: a 422 x 102 box 85 from
+  the top and 103 from the right on 1080 lines, 535 wide and taller for a long name (shown
+  whole, wrapped at its spaces), with the trophy sound; one at a time (5.6 s, then 1 s), the
+  Platinum after the trophy that completed it.
+  - In the menus the page shows it (tpop.js, new, shared); during a game a window of its own
+    (popup.html / popup.js, new): always on top, never takes the focus or clicks
+    (WS_EX_NOACTIVATE | TRANSPARENT | TOOLWINDOW | TOPMOST), out of the taskbar, with the
+    menus' Font, Text Size, Text Color and PS3 theme notification picture (trophy_pop_style).
+  - The window is made (hidden) as a game starts (prepare; how long it took, in the log), and a
+    pop-up waits until its page says it listens ("trophy-pop-ready", at most 15 s); what it
+    showed is logged ("trophy-pop-shown"), and so is each trophy won, where its pop-up went
+    (over the game or in the menus), a window that couldn't be made, and the pop-up page's own
+    errors ("trophy-pop-note"). Its sound is loaded with the page, and a trophy picture that
+    can't be read shows its grade's picture instead.
+  - A trophy shared by several copies of a game (the same set key) pops up once (first_time,
+    1 minute).
+- The watch (start_watch): the game running's files every 1.5 s (others every 10 s): RPCS3's
+  TROPUSR.DAT, Steam's own and the emulators' files; its store while it runs (web_every):
+  Steam with the key every 4 s (without it 20 s), GOG and Epic every 6 s, a refusal doubling
+  the wait (web_wait, at most 160 s). A Steam game with its trophies in files here (Steam's
+  own, an emulator's) never asks Steam. RetroAchievements: its own watch (start_ra_watch,
+  its recent achievements every second, 5 s after a refusal).
+- After a game ends, its store is asked again at 8, 30, 90 and 240 s (AFTER_GAME), and a sync
+  within 10 minutes of it pops up what it won at the end (LAST_PLAYED).
+- The log notes how long after the store recorded each trophy it was seen.
+- The menus' notifications use the pop-up's look too.
+
+
+------------------------------------------------------------------------
+3. Linked Accounts and Account Management
+------------------------------------------------------------------------
+
+- accounts.rs (new): each user's store accounts, kept in content\data\accounts.dat encrypted
+  with Windows' DPAPI (only this Windows user on this computer reads it, with a fixed extra
+  secret). The menus only ever see names and IDs, never keys or tokens (accounts_view).
+  - Steam: the user's own Steam Web API key and Steam ID (a profile address taken too); a
+    private profile is told (Ok("private")). With a key alone, the account signed in to Steam
+    on this computer.
+  - RetroAchievements: username and Web API key.
+  - Epic Games and GOG: their launchers' own sign-in page in a window (web_window, its own
+    browser data in content\data\webview_login), as Playnite / SuccessStory do: the system
+    never sees the password. Epic keeps the account's ID, name and a renewal token (the
+    sign-in's own session closed right after); GOG a renewal token. The Epic
+    Account ID option is gone (sign-in only).
+  - Sign Out deletes the store's cookies too; Remove All Accounts Information forgets
+    everything (keys, IDs, sign-ins, Connect with Steam Friends, the sign-in windows' data,
+    the kept Steam picture and saved trophy lists); a deleted user's accounts go with them.
+- net.rs (new): every web request through Windows' curl.exe with the address, headers and body
+  handed over its standard input (-K -), never on its command line (keys and tokens); https
+  only; Steam's community pages left alone after a 429; online() checked at most every 30 s.
+- Account Management (steamfriends.js, new): Connect with Steam Friends, Linked Accounts (each
+  store's section, its value or "Not Set"), Account Games.
+- secret.rs (new): what else is secret is sealed with DPAPI too, written as "dpapi:" and the
+  sealed bytes in hex: the game databases' API keys (settings.json), the PlayStation Network
+  sign-ins' IDs and passwords (psn.json) and each user's saved Sign-In (users.json). Values an
+  older version wrote plain are read, and sealed at the first start (lib.rs secret_migrate) or
+  the next save; a sealed value that can't be opened (the file copied to another Windows user
+  or computer) reads as empty. Sealing that fails keeps the value out of the file rather than
+  writing it plain.
+
+
+------------------------------------------------------------------------
+4. Steam Friends (new)
+------------------------------------------------------------------------
+
+- steamfriends.rs (new): Connect with Steam Friends (On / Off at any time) shows the Steam
+  account's friends in the Friends column, and the user's own card the Steam account (name,
+  picture, profile description as the comment, the game being played).
+  - With the key: ISteamUser/GetFriendList and GetPlayerSummaries; descriptions from each
+    public profile's page. With the Steam ID alone (public profile and friends list): the
+    profile's public pages, a friend at a time, the status brought up to date in turns
+    (keyless_players).
+  - Statuses as the PSN card's: Online (1, 5, 6), Away (2, 3, 4), Signed Out (0) with "Last
+    Sign-In: ... Ago"; online first, then away, then signed out.
+  - Card colours: a private profile's as Steam shows it; else the main colour of their
+    profile background (GetProfileItemsEquipped); else one of the card colours by their ID.
+  - Their trophy levels counted from their public Steam games (steam_friend_levels, near the
+    cursor first, kept: steam_friend_levels_kept); "–" when their games are private.
+  - Kept like every cache (Temp, or the system's folder with Save Cache in System
+    Directory): pictures, descriptions, colours, levels, fetched again only when changed;
+    without the internet, the friends as last seen. Cache Management: Delete Steam Cache.
+- The signed-in Steam account's picture can be chosen as an avatar ("steam").
+- Trophy Level (Friends Personalization): Automatic (from the trophies earned, the default,
+  given to every user once in 2.0.0), Random (a weighted level: 1-5 60 %, 6-10 25 %,
+  11-15 10 %, 16-20 4 %, 21-30 1 %) or Custom; always Automatic with Steam Friends on.
+- Statuses checked every minute (was 30 s), on a clock that only runs while the XMB is what's
+  shown (not in the Internet Browser, the media players and viewers, the Photo Gallery): it
+  goes on from where it was once they close, rather than checking at once.
+- A friend whose profile goes public or private is seen at the status checks (list.json, and
+  their public page with the Steam ID alone): only that friend's level is counted again, or
+  "-" at once with nothing asked of Steam (steamfriends.rs privacy_changed).
+- A friend with a public profile whose games or achievements were found private is asked
+  again an hour after (trophies.rs PRIVATE_RECHECK, was a day; steamfriends.rs LEVEL_RECOUNT /
+  level_due, steamfriends.js _sfLevelsAsk at the status checks too): only those friends, one
+  request each. A level counted stands for the session, and a private profile is never asked
+  about.
+
+
+------------------------------------------------------------------------
+5. The user's profile and player cards
+------------------------------------------------------------------------
+
+- ui.js: the user's own profile (Cross on the user's card in Friends, measured on the
+  console's captures): the card in its colour over three pages (L1 / R1): the last 8 trophies
+  won with the level and trophies, the trophies by grade (the steps), Online ID / About Me /
+  My Languages. The colour icon (Cross: the colours, Triangle: a custom colour) and the comment
+  bubble (Cross: the system's text form) can be chosen, glowing while chosen.
+- The selected player card re-measured on the captures: avatar window, light, star and level,
+  the comment bubble and its tail as one piece, the status mark and its shadow, the game mark
+  (the controller, 34 x 22).
+- Avatars: a picture saved with a thin empty strip along an edge is shown from where it
+  starts (no strip of what's behind); a figure on an empty background is shown whole; a
+  Steam friend's picture still loading shows the loading icon.
+- The avatar's sheen covers the whole avatar, its see-through parts too; behind the avatar,
+  inside its square, only the card's colour shows (xmb-shared.js cardHTML .fc-avunder: the
+  card-colour silhouette under the avatar's edge, the background no longer seen through it).
+  The sheen's middle line meets the card's line, on the small card and the profile's big card.
+  The small card's rim shadow and the mini card's lighter rim are gone.
+- Custom Color on the user's card: its footer (Enter / Back) where the profile's is.
+- A new user starts with the Icon Style Original (Reactive) and the Wave Style Original (every
+  other Theme Setting at its default): users.rs new_user_theme.
+
+
+------------------------------------------------------------------------
+6. PS3 games: disc images, RPCS3's folders and its own RPCS3
+------------------------------------------------------------------------
+
+- iso.rs (new): a PS3 disc image read straight from its ISO 9660 file system (no mounting),
+  only the small files: PS3_GAME's PARAM.SFO, pictures, preview, music, TROPDIR, and
+  PS3_DISC.SFB (its Title ID). ps3.rs iso_game: copied once into
+  content\data\cache\ps3iso\<the image's path, size and date>\PS3_GAME; a dumped disc whose
+  PARAM.SFO can't be read: the image's name and PS3_DISC.SFB's Title ID. Found in an RPCS3's
+  folder, in its games.yml (started by Title ID), or in a source folder (started by the image).
+- ps3.rs vfs_dir / hdd_dir / moved_dirs: an RPCS3's dev_hdd0 or games folder kept elsewhere
+  (config\vfs.yml, vfs.yml in older versions, $(EmulatorDir)): its games found with it,
+  started by it, its trophies read there; the same folder shared by two installs: each game
+  once; a drive that isn't there: as if not set.
+- gamesrc.rs: a game inside an RPCS3 install is started by that install's RPCS3 (its
+  trophies, saves and settings are there); the others by the last RPCS3 found. A shortcut
+  that started another RPCS3 than the one the game is in is made again for its own
+  (update_ps3_launch). A game found twice (its RPCS3 a source and the folder it's in too):
+  once; paths compared however they're written (path_key: "G:\x" and "G:/x").
+
+
+------------------------------------------------------------------------
+7. Game Recognition and game art
+------------------------------------------------------------------------
+
+- gameart.rs steam_standin: a game recognized as a Steam game (store, app ID, emulator files,
+  name), never a PS3 game, gets Steam's own pictures: its logo as the icon (its see-through
+  border cut, trim_transparent) and the library hero as the background (an older game
+  without one: its store header, zoomed as the hero is). The newer games' addresses with their
+  own code come from Steam's store (IStoreBrowseService/GetItems). Never in place of art you
+  chose or a PS3 game's own (src_rank: local < databases < Steam < PS3 < yours); once per game
+  (steam_art5.json): a picture removed afterwards isn't put back.
+  - Steam's pictures only come with Steam Game Art Scraping (below).
+- A game renamed by hand: looked up again under its new name (scrape_renamed): what the
+  databases find replaces only what they or the program's icon gave it; your art and a PS3
+  game's own stay.
+  - Its folder in content\Games takes the name typed (lib.rs game_folder_rename,
+    gamesrc.rs rename_game_folder: characters Windows doesn't allow left out, numbered when
+    the name is taken), and everything that knew the old folder follows it: the recognized
+    games' list, steam_art5.json, renamed_pending.json, its trophy source and list
+    (trophies.rs folder_renamed), what was played last and Game Settings' open menus.
+- Game Recognition only finds games (lib.rs game_sources_sync, scan_library): their art comes
+  from two options of their own in Game Settings, each running over every game in the Games
+  folder with the loading icon and a count, and told when done ("Art found for N games" /
+  "No new art found", or why not: no internet, no database set up):
+  - Steam Game Art Scraping (lib.rs game_art_steam): Steam's pictures for every game recognized
+    as a Steam game that has no icon, background or Trophy Collection banner, or whose icon or
+    background is its program's own or the databases' (steam_art_wanted); Steam's take the
+    place of the databases' art, never the other way around.
+  - Game Settings > Game Art Databases (moved out of Game Recognition, was Game Databases;
+    "Enter the keys to access the game art in SteamGridDB, TheGamesDB or RAWG."): Game Art
+    Database Scraping (lib.rs game_art_db, in place of Automatic Scraping) gets the art of
+    every game with no icon (or only its program's own) or no background; a game with an icon
+    of its own and a background is skipped (needs_db_art). For the games it doesn't skip: a
+    video when there's none, the name and the console too.
+  - Both look again for what a game is missing, one removed before too (gameart.rs
+    FILL_MISSING), never a PS3 game or PlayStation Home, never in place of what you chose; a
+    game unchanged since it was last asked about isn't asked again (game_lookups.json; the
+    databases' setup mark keeps its first character, so the games looked up before stay so).
+- A game's pictures changed on disk show at once (models.rs Game art_stamp: the files' dates;
+  a new date, a new address, so no copy kept from before is shown).
+- gamesrc.rs: a source folder added again brings back its games whose folders are gone
+  (source_added); one change to the list of recognized games at a time (SYNC), so a folder
+  removed during a search can't leave its games listed; the listed folder itself is never
+  taken for a copy of itself (repair).
+- Program icons: a blank one (all black, as Windows gives for some Unity games at 256 px) is
+  made from the largest smaller size that has colours; blank icon.png files from before are
+  made again (drop_blank_icon). A game started through its store's link takes its own
+  program's icon.
+- Program icons are centred in their picture (gamesrc.rs center_png / center_local_icon, once
+  per session; the shading cache's key changed so they're made again).
+
+
+------------------------------------------------------------------------
+8. Menus and scrolling
+------------------------------------------------------------------------
+
+- xmb.js _smoothList: the media lists (Music, Photo, Video, Game, Friends, your own sections,
+  Trophy Collection) and every other list scroll as the console's, measured on its capture
+  frame by frame: a held direction repeats 300 ms after the press, then a row every 66.7 ms
+  (main.js holdPace, on its own clock); each row closes 0.6 of its distance every 1/30 s
+  (e^(-t / 65.2 ms)), so the list follows the button about a row behind, never jumping;
+  more rows a repeat when held long. Pressed: a row's details at once; held: its background,
+  preview and music once the list stops.
+- marquee.js: long names scroll as the console's: still 2 s, then left at 89 px a second (on
+  1080 lines) until gone, half a second gone, back at the start with a short fade. A name
+  written anew always scrolls again (it could stay stuck at its start).
+- Menu Blur (Power Save Settings): Original, All (the Web browser too), Off (the older "Remove
+  Menu Blur: On"). Every blurred background is blurred the same, 6 px; the background blurred
+  in Trophy Collection, Settings' menus and Account Management.
+- Settings' options: their wrench icon at the console's size, growing from it when entered.
+- The loading icons turn together, and one drawn again goes on from where it was.
+- Text shadows of the date, time and friends' count, and the clock's face, fitted to the
+  reference pixel by pixel.
+- Logging in: the box grows, then its profile slots fade in.
+- The mouse pointer only shows for a mouse that really moved (not when what's under a still
+  pointer changes, nor going in or out of full screen).
+- Every list (xmb.js _smoothXY, _smoothTick) settles without shaking: its rows move in whole
+  pixels of the screen (Windows' display scaling counted: 1.25 page pixels at 125 %), so a
+  row's name and details and its picture no longer go a pixel each their own way, up and down,
+  at every step; they stop the moment what's left rounds to none, and the rows' usual slides
+  come back a frame after the last one is in place (given back in the same frame, the last
+  pixel crept into place again, a fraction at a time). A row placed again up or down slides
+  there without going past its place and back (styles.css .item: no vertical bounce; sideways,
+  into and out of a menu, it still does). Each row's place is itself on a whole pixel of the
+  screen (xmb.js _layoutItems), and its box no longer grows with its picture as it's chosen
+  (styles.css .item: a box of no size at its place, its picture and name centred on it, as the
+  Trophy Collection's rows already were): its name and details, placed again from the box's
+  middle at every step of the growing, landed on a pixel or the next and shook up and down in
+  Settings, Music, Game and every other list.
+- Text: every text smoothed alike, in shades of grey (WebView2 --disable-lcd-text): text on
+  something solid (a friend's comment in its bubble, some names) was drawn with Windows'
+  coloured ClearType edges, jagged beside the rest.
+- Text and Color: Clock Shadow and Date and Time Shadows (On by default, no descriptions),
+  after Clock Color: off, the clock (its face's shading too) or the date, time and friends'
+  count are drawn without their shadows, the light one every text has included
+  (user.theme.clockShadow / infoShadow; saved in presets and Custom Themes).
+- Menu Blur Off: the menus' backgrounds take the same shade as with it On (the profile's big
+  card was much darker).
+- Photo Gallery: a picture still loading shows the loading icon (not a missing picture); the
+  Flat Icon Style's loading icons take the Icon Color (--icon-flat).
+- What's New: its icon when chosen at the size of the console's.
+
+
+------------------------------------------------------------------------
+9. Keep Personalization Options when Booting
+------------------------------------------------------------------------
+
+- New (On by default): before anyone signs in (the intro and Log In) the system shows the last
+  look it showed (settings.bootLook: every Theme Setting and the themes in use, saved only when
+  it changed), Background Shuffle included; Off: the original look until someone signs in.
+
+
+------------------------------------------------------------------------
+10. Media
+------------------------------------------------------------------------
+
+- video.rs: H.264 the webview can't show (High 10, High 4:2:2, High 4:4:4, 10 / 12-bit; common
+  in MKVs) is converted, not only repacked (VideoInfo.hard_pic, read from the avcC /
+  CodecPrivate by vprobe.rs and from FFmpeg's report); the video itself is copied, never a
+  cover picture kept with it (-map 0:V:0?); why a copy failed and how long it took, in the log.
+- Video icons: a new file name each time ("<key>_<when>"), so the old picture isn't shown
+  again from the webview's cache; the older ones deleted.
+- cachesweep.rs (new): the decoded songs and converted videos are noted next to them
+  (decoded.tsv / videos.tsv); at every start the copies of files changed or gone since are
+  deleted (they only ever grew).
+- medialib.rs forget_missing: files read before that aren't there any more are forgotten at
+  start (a drive unplugged: kept).
+- docs.js: what's kept stays limited over a long session: the 3 documents opened last stay
+  open, each keeping its last 16 pages; the last 400 small first-page pictures.
+- glasslayer.js / iconshade.js: the glass and glow shapes made for a theme's icons are
+  dropped with the theme (changing themes all day kept adding to the graphics memory).
+- video.rs: a copy's sound is always in one of AAC's standard layouts (mono, stereo or 5.1:
+  aformat=channel_layouts=mono|stereo|5.1): an MKV's 5.1 (side) sound (E-AC-3 / Atmos films)
+  and 7.1 were written with a layout of their own, which Windows' AAC decoder refuses, so the
+  copy didn't play ("PIPELINE_ERROR_DECODE").
+- A playable copy the player can't play is deleted (lib.rs video_drop_copy), so it's never
+  played again in place of a good one: a copy saved from before is made again; one just made
+  shows the error. Why the webview refused it goes in MaXMB.log (videoplayer.js _onError).
+
+
+------------------------------------------------------------------------
+11. Fixes
+------------------------------------------------------------------------
+
+- hidpad.rs: HIDP_CAPS was 44 bytes where Windows writes 64: HidP_GetCaps wrote 20 bytes past
+  it each time a PlayStation controller was opened (often while RPCS3 used it), which could
+  crash the system (STATUS_HEAP_CORRUPTION). Its size, HIDD_ATTRIBUTES' and
+  SP_DEVICE_INTERFACE_DATA's are now checked when it's built.
+- Glow and Glow (Pulse): the PlayStation Network logo (a full-colour picture with a dark border)
+  and YouTube's picture glow too, the glow's colour lifted to be seen (xmb-iconstyle.js
+  glowLift).
+- Game column by folder: a game deleted inside a folder goes at once, the folder's last one
+  takes you back to the Game column, and Sort By reorders the folder you're in
+  (_refreshGameColumn).
+- Game Settings > Game Information > a game: the back arrow 45 px past the game's wide picture,
+  as in Trophy Collection, never over it.
+- The user's card in Friends: its profile opens only with Cross (Triangle no longer opens it).
+- The profile's big card and Trophy Collection's mini card: their light fades out at its end as
+  the small card's, with no solid line.
+- Release builds unwind a panic (Cargo.toml panic = "unwind", was "abort"): a fault in one of
+  the background threads (the trophy watch, a store's reading) is logged with the thread's name
+  and no longer closes the whole system. A crash in native code (an access violation, heap
+  corruption, a stack overflow...) is written to the log as it happens, with the module, its
+  offset and the thread (log.rs native, AddVectoredExceptionHandler).
+- A game started is logged with its process, or why it couldn't start.
+- Unused code removed (focus.rs alive / any_running_from, browser.rs right_button,
+  medialib.rs clear_index, some ps3wave and player leftovers).
+- Every lock is taken even after a thread failed while holding it (unwrap_or_else(into_inner)):
+  one part failing no longer stops the others. A background thread that fails is logged as
+  ERROR ("a part of the system failed and stopped, MaXMB goes on"), and the trophy pop-up's
+  queue starts again if its thread stopped (trophypop.rs).
+- Files saved whole or not at all (paths.rs write_whole: written beside the file under a name
+  of its own, then put in its place): settings.json, users.json, psn.json, accounts.dat, every
+  game.json, game_sources.json, the trophy sets and record, Account Games, the friends' list and
+  levels. The disk filling up in the middle of a save left them cut (the users or settings lost
+  at the next start); two saves at once could mix. Now the file stays as it was and nothing
+  half-written is left.
+- Steam friends' levels: a level counted this session was asked of Steam again only after a
+  restart; one found private (games or achievements) was never asked again during a session.
+- Steam friends' levels: a friend who keeps their play time private (Steam's "Always keep my
+  total playtime private": every game listed at 0 minutes) had level 1, none of their games
+  counted as played. Now all their games are counted (at most 300) and counted again once a day,
+  as nothing tells which they played since (trophies.rs friend_time_hidden, HIDDEN_RECOUNT).
+- Steam friends: a profile gone public or private is counted once (steamfriends.rs
+  list_private). The friend's public page found it first, then the list's own check a minute
+  later found it again (the list shows the page's answer too): two "changed their profile's
+  privacy" lines, and a profile gone public had its level asked of Steam twice. The change is
+  now put in the kept list at once, and the list and a friend's check read and write it one at
+  a time.
+- A game that must run as administrator (os error 740, "The requested operation requires
+  elevation") starts again through Windows, which shows its "Do you want to allow this app to
+  make changes?" prompt first, as a double-click does (launcher.rs run_as_admin, ShellExecuteExW
+  "runas", with the game's arguments and folder). Answered No, or the rights couldn't be
+  given: "The game couldn't run as administrator, so it didn't start" in the log. A game is
+  started from a thread of its own (lib.rs launch_game), so the window doesn't wait on the
+  prompt.
+- The window made anew after a game (WebView2's processes ended during it) comes back as from
+  any other game: no Console Startup Sound or intro, no user selection, the same user signed in
+  on the Game column with the game just played chosen (focus.rs resume_after_game, main.js
+  boot, xmb.js start). It started the whole system over before, as if it had crashed and
+  restarted.
+- The window made anew after a game (WebView2's processes ended during it): the trophy pop-up's
+  window is closed first and made again when it's next needed (trophypop.rs close_window). Its
+  page ran in the same WebView2, which had stopped: left open beside the new window, it was the
+  likeliest cause of the system closing by itself a few minutes later (STATUS_HEAP_CORRUPTION).
+
+
+------------------------------------------------------------------------
+12. Tests
+------------------------------------------------------------------------
+
+- trophy_tests.rs (new): every way a game gets into the system against every account state,
+  sudden changes (files deleted or damaged, kept lists deleted, a game deleted outside the
+  system, Trophies Off), trophies won in several ways, and every Steam emulator (app ID, file
+  found, won read, a trophy won while it runs seen).
+- system_tests.rs (new): real files' metadata, songs decoded, settings / users / Custom Themes
+  saved and read back, games and media following their files, sudden changes.
+- campaign_tests.rs (new): PS3 games in every format, each started by the RPCS3 it's in, and
+  their files changed, moved or deleted; which stores are asked and how often; offline and
+  online lookups.
+- Tests added to video.rs, ps3.rs, iso.rs, gameart.rs, gamesrc.rs, medialib.rs, trophypop.rs.
+- resilience_tests.rs (new): the disk filling up in the middle of saving (MAXMB_TINYFS: a small
+  file system of its own), several saves at once, secrets never written plain, a scraping
+  stopped in the middle, and the friends' levels asking Steam only about the friends that need
+  it. video.rs: 5.1 (side) and 7.1 sound written as standard 5.1, mono kept.
+- A long session in the browser preview (600 songs, 400 pictures, 200 videos; held scrolling,
+  the mouse wheel, every Settings menu, overlays opened and closed, 25 rounds): memory and the
+  page's elements stay level.
+
+
+------------------------------------------------------------------------
+13. Project files
+------------------------------------------------------------------------
+
+- New: src-tauri/src accounts.rs, cachesweep.rs, iso.rs, net.rs, steamfriends.rs,
+  trophies.rs, trophypop.rs (and the tests above); src/js popup.js, steamfriends.js, tpop.js,
+  trophies.js; src popup.html, trophies.css; src/assets/icons/trophy, snd_trophy.wav and the
+  system icons the trophies and profile use.
+- paths.rs: login_webview_dir, trophies_dir, steam_avatar_dir, friends_cache_dir.
+- New: src-tauri/src secret.rs, resilience_tests.rs; paths.rs write_whole.
+- Split into smaller files, nothing changed in what they do:
+  - ui.js: ui-core.js (avatars, lazy pictures and videos, held-button speed-up), ui-menus.js
+    (the Triangle menus, the game's information panel, Change Keybinds), ui-text.js (text entry
+    and the on-screen keyboard), ui-pickers.js (playlists, avatars, the Photo Gallery grid,
+    yes / no questions, lists), ui-psn.js (Sign-In / Sign-Up, the profile card), ui-music.js
+    (the Music Player, Volume Control), ui-color.js (Custom Color). ui.js gathers them, so
+    every other file takes from it as before.
+  - styles.css: styles.css (the base), styles-menus.css, styles-keyboard.css,
+    styles-friends.css, styles-screens.css, styles-players.css, styles-grids.css,
+    styles-profile.css, loaded in that order by index.html (the same stylesheet, in parts).
+  - trophies.rs: trophies/account_games.rs, trophies/sets.rs (the sets and the record of the
+    trophies won), trophies/sync.rs (where each game's trophies come from, the sync, the watch)
+    and trophies/tests.rs, beside the existing trophies/rpcs3.rs, steam.rs and stores.rs.
+- Version 1.1.4 -> 2.0.0 (package.json, package-lock.json, src-tauri/Cargo.toml,
+  src-tauri/Cargo.lock, src-tauri/tauri.conf.json, the browser preview's app_info in api.js).
+
+
 1.1.4:
 
 

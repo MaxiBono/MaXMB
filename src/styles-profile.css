@@ -1,0 +1,240 @@
+/* MaXMB's look, part 8 of 8: the user's profile and the selected player card. The parts are loaded one after another, in this order
+   (index.html), as one stylesheet. */
+/* ==== the user's profile (✕ on the user's card: the console's screen). Every
+   size and shade below is measured on its 1920 x 1080 captures (45D09CD2,
+   420AD9EF, EA017303); --tu is one of their pixels. The card: 800 x 469 at
+   560, 243, in its colour, 1 px darker at its edge; lit over its top (from
+   49.5 % white to 12.6 % at 89 px, 4 px in from its sides); the avatar's
+   window (159 x 159 at 8, 7) is a hole in it (what's behind shows through a
+   see-through avatar); the panel (786 x 286 at 7, 174) is #222, sunk in. ==== */
+.form.pp { --tu: calc(100vh / 1080); display: block; }
+.form.pp.show::before { top: calc(198 * var(--tu)); height: calc(1.5 * var(--tu)); }
+.form.pp.show::after { top: calc(879 * var(--tu)); height: calc(1.5 * var(--tu)); }
+.pp-wrap { position: absolute; left: 50%; top: 0; width: 0; height: 100%; }
+.pp-card { position: absolute; left: calc(-400 * var(--tu)); top: calc(243 * var(--tu)); width: calc(800 * var(--tu)); height: calc(469 * var(--tu)); color: #fff; }
+.pp-bg { position: absolute; inset: 0; border-radius: calc(13 * var(--tu)); background: var(--card-bg, #868485);
+  box-shadow: inset 0 0 0 calc(1 * var(--tu)) rgba(0,0,0,0.2), 0 0 calc(2 * var(--tu)) rgba(0,0,0,0.45);
+  -webkit-mask: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 159 159' preserveAspectRatio='none'%3E%3Crect width='159' height='159' rx='11' ry='11' fill='%23fff'/%3E%3C/svg%3E");
+  -webkit-mask-position: 0 0, calc(8 * var(--tu)) calc(7 * var(--tu)); -webkit-mask-size: 100% 100%, calc(159 * var(--tu)) calc(159 * var(--tu));
+  -webkit-mask-repeat: no-repeat, no-repeat; -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 159 159' preserveAspectRatio='none'%3E%3Crect width='159' height='159' rx='11' ry='11' fill='%23fff'/%3E%3C/svg%3E");
+  mask-position: 0 0, calc(8 * var(--tu)) calc(7 * var(--tu)); mask-size: 100% 100%, calc(159 * var(--tu)) calc(159 * var(--tu));
+  mask-repeat: no-repeat, no-repeat; mask-composite: exclude; }
+/* (the light over its top: rows 1 to 92 of the card) */
+.pp-bg::before { content: ""; position: absolute; left: calc(4 * var(--tu)); right: calc(4 * var(--tu)); top: calc(1 * var(--tu)); height: calc(92 * var(--tu));
+  border-radius: calc(10 * var(--tu)) calc(10 * var(--tu)) 0 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.24) 0, rgba(255,255,255,0.24) calc(1 * var(--tu)), rgba(255,255,255,0.59) calc(1 * var(--tu)), rgba(255,255,255,0.59) calc(2 * var(--tu)), rgba(255,255,255,0.52) calc(2 * var(--tu)), rgba(255,255,255,0.495) calc(4 * var(--tu)),
+    rgba(255,255,255,0.08) calc(91 * var(--tu)), rgba(255,255,255,0) calc(92 * var(--tu))); }
+/* (its end as the small card's light ends: faded out, with no line of its own -- the brighter
+   and the dark rows that drew a solid line there are gone) */
+.pp-av { position: absolute; left: calc(8 * var(--tu)); top: calc(7 * var(--tu)); width: calc(159 * var(--tu)); height: calc(159 * var(--tu));
+  border-radius: calc(11 * var(--tu)); overflow: hidden;
+  box-shadow: calc(1 * var(--tu)) 0 0 rgba(255,255,255,0.14), 0 calc(1 * var(--tu)) 0 rgba(255,255,255,0.05); }
+.pp-av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pp-av img.fc-stock { width: 57.8%; height: 57.8%; margin: 21.1%; object-fit: contain; }
+/* (the card's light goes on over the avatar and ends on the card's own line) */
+.pp-av .fc-glass { inset: 0; height: auto; border-radius: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.44) 0, rgba(255,255,255,0.1) calc(85.5 * var(--tu)), rgba(255,255,255,0) calc(86.5 * var(--tu))); }
+/* (its end where the card's own light ends, 93 down the card -- the avatar 7 down --, measured drawn: one line across both) */
+.pp-av::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset calc(1 * var(--tu)) calc(1 * var(--tu)) calc(2 * var(--tu)) rgba(0,0,0,0.35); }
+/* the text: the notifications' shadow (trophies.css .tpop-l1) */
+.pp-tx { filter: drop-shadow(0 0 calc(1 * var(--tu)) rgba(0,0,0,0.2)) drop-shadow(calc(2 * var(--tu)) calc(3 * var(--tu)) calc(2.5 * var(--tu)) rgba(0,0,0,0.75)); white-space: nowrap; }
+.pp-name { position: absolute; left: calc(185.5 * var(--tu)); top: calc(101 * var(--tu)); height: 0; display: flex; align-items: center; }
+/* (the status mark's shadow: stronger than the text's) */
+.pp-dot { width: calc(26 * var(--tu)); height: calc(26 * var(--tu)); flex: none; background: center / contain no-repeat url("./assets/icons/system/tex_indi_Sign_in.png");
+  filter: drop-shadow(0 0 calc(1 * var(--tu)) rgba(0,0,0,0.3)) drop-shadow(calc(2.6 * var(--tu)) calc(3.8 * var(--tu)) calc(2.4 * var(--tu)) rgba(0,0,0,0.95)); }
+.pp-name .pp-tx { margin-left: calc(11 * var(--tu)); font-size: calc(26.6 * var(--tu)); line-height: 1; }
+/* the comment's bubble (the player card's, at this card's size) */
+.pp-msg { position: absolute; left: calc(185 * var(--tu)); right: calc(19 * var(--tu)); top: calc(13.5 * var(--tu)); height: calc(44 * var(--tu)); box-sizing: border-box; display: flex; align-items: center;
+  border-radius: calc(11 * var(--tu)); background: #fff; color: #4a4a4a; font-size: calc(19.4 * var(--tu)); line-height: 1;
+  padding: 0 calc(13 * var(--tu)); overflow: hidden; white-space: nowrap; cursor: pointer; z-index: 2; }
+.pp-msg span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* (no comment yet: the same bubble, saying what goes in it, in grey -- capture 1D3FA0E7) */
+.pp-msg.pp-empty { color: #a3a3a3; font-size: calc(21.2 * var(--tu)); padding-top: calc(5 * var(--tu)); }
+/* (the bubble and its tail are one piece: faded together, the tail's overlap never shows) */
+.pp-bub { position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  filter: drop-shadow(calc(1 * var(--tu)) calc(1.7 * var(--tu)) calc(1.4 * var(--tu)) rgba(0,0,0,0.38)); }
+.pp-bub > * { pointer-events: auto; }
+/* (the tail: the bubble's own white in the tail's shape; the two cast one shadow, on .pp-bub) */
+.pp-tail { position: absolute; left: calc(182 * var(--tu)); top: calc(55 * var(--tu)); width: calc(150 * var(--tu)); height: calc(24 * var(--tu)); z-index: 3; pointer-events: none; background: #fff;
+  -webkit-mask: url('./assets/icons/system/bubble_tail.png') 0 0 / 100% 100% no-repeat; mask: url('./assets/icons/system/bubble_tail.png') 0 0 / 100% 100% no-repeat; }
+/* chosen: the bubble fades and comes back (never fully gone) */
+.pp-bub.pp-on { animation: ppGlow 1.7s ease-in-out var(--ppd, 0ms) infinite; }
+@keyframes ppGlow { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes ppGlowB { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+/* the colour icon: four flat colours, behind the card's left edge (maxresdefault:
+   11 px showing, 83 px tall, 30 px under the card's top) */
+.pp-colors { position: absolute; left: calc(-17 * var(--tu)); top: calc(70 * var(--tu)); width: calc(22 * var(--tu)); height: calc(83 * var(--tu));
+  display: flex; flex-direction: column; border-radius: calc(3 * var(--tu)) 0 0 calc(3 * var(--tu)); overflow: hidden; cursor: pointer; }
+/* (IMG_3857: 70 under the card's top) */
+/* (chosen: the icon itself brightens a little, in step with the light around it) */
+.pp-colors.pp-on { animation: ppColB 1.7s ease-in-out var(--ppd, 0ms) infinite; }
+@keyframes ppColB { 0%, 100% { filter: brightness(1.02); } 50% { filter: brightness(1.16); } }
+/* (and a light over the whole of it, in step: less than the light around it, and none of it
+   past the icon's right) */
+.pp-colors.pp-on::after { content: ""; position: absolute; inset: 0; background: #fff; pointer-events: none;
+  animation: ppColW 1.7s ease-in-out var(--ppd, 0ms) infinite; }
+@keyframes ppColW { 0%, 100% { opacity: 0.04; } 50% { opacity: 0.2; } }
+/* (its colours open: narrower, at the same height) */
+.pp-pal ~ .pp-card .pp-colors { left: calc(-9 * var(--tu)); width: calc(14 * var(--tu)); }
+.pp-colors i { flex: 1; display: block; }
+.pp-colors i:nth-child(1) { background: #e90117; }
+.pp-colors i:nth-child(2) { background: #f7a41a; }
+.pp-colors i:nth-child(3) { background: #2a8e82; }
+.pp-colors i:nth-child(4) { background: #194fa9; }
+/* chosen: a light around it (IMG_3857), behind the icon and the card */
+.pp-cglow { position: absolute; left: calc(-17 * var(--tu)); top: calc(70 * var(--tu)); width: calc(22 * var(--tu)); height: calc(83 * var(--tu)); border-radius: calc(3 * var(--tu)); pointer-events: none;
+  /* (around the icon: its top, bottom and left, cut at the card's edge so none
+     shows through the avatar's window) */
+  clip-path: inset(calc(-30 * var(--tu)) calc(5 * var(--tu)) calc(-30 * var(--tu)) calc(-30 * var(--tu)));
+  box-shadow: 0 0 calc(7 * var(--tu)) calc(4 * var(--tu)) rgba(255,255,255,0.8), 0 0 calc(16 * var(--tu)) calc(7 * var(--tu)) rgba(255,255,255,0.3); animation: ppGlowB 1.7s ease-in-out var(--ppd, 0ms) infinite; }
+/* the panel */
+.pp-panel { position: absolute; left: calc(7 * var(--tu)); top: calc(174 * var(--tu)); width: calc(784 * var(--tu)); height: calc(286 * var(--tu));
+  background: #222; border-radius: calc(8 * var(--tu)) calc(8 * var(--tu)) calc(7 * var(--tu)) calc(7 * var(--tu)); overflow: hidden; }
+.pp-card::after { content: ""; position: absolute; left: calc(7 * var(--tu)); top: calc(174 * var(--tu)); width: calc(784 * var(--tu)); height: calc(286 * var(--tu)); pointer-events: none;
+  border-radius: calc(8 * var(--tu)) calc(8 * var(--tu)) calc(7 * var(--tu)) calc(7 * var(--tu));
+  box-shadow: calc(1 * var(--tu)) calc(1 * var(--tu)) 0 rgba(0,0,0,0.36), calc(2 * var(--tu)) calc(2 * var(--tu)) 0 rgba(255,255,255,0.1); }
+.pp-inset { position: absolute; inset: 0; pointer-events: none; z-index: 5; border-radius: inherit;
+  background: linear-gradient(90deg, rgba(0,0,0,0.58) 0, rgba(0,0,0,0.45) calc(2 * var(--tu)), rgba(0,0,0,0.3) calc(4 * var(--tu)), rgba(0,0,0,0.1) calc(6.5 * var(--tu)), rgba(0,0,0,0) calc(8.5 * var(--tu))); }
+.pp-tabs { position: absolute; left: 0; right: 0; top: calc(3 * var(--tu)); height: calc(27 * var(--tu)); z-index: 4;
+  background: linear-gradient(180deg, #2f2f2f 0, #535353 calc(7 * var(--tu)), #545454 calc(25 * var(--tu)), #5b5b5b calc(25 * var(--tu)), #5b5b5b calc(26 * var(--tu)), #555 calc(26 * var(--tu)));
+  font-size: calc(17 * var(--tu)); line-height: calc(27 * var(--tu)); font-weight: 700; color: #ededed; -webkit-text-stroke: calc(0.6 * var(--tu)) currentColor; }
+.pp-l1, .pp-r1 { position: absolute; top: 0; display: flex; align-items: center; height: 100%; }
+.pp-l1 { left: calc(9 * var(--tu)); }
+.pp-r1 { right: calc(9 * var(--tu)); }
+.pp-l1 img, .pp-r1 img { height: calc(13 * var(--tu)); width: auto; display: block; }
+.pp-l1 img { margin-right: calc(5 * var(--tu)); } .pp-r1 img { margin-left: calc(1 * var(--tu)); }
+.pp-dots { position: absolute; left: calc(351 * var(--tu)); top: calc(6 * var(--tu)); display: flex; gap: calc(20 * var(--tu)); }
+/* (the pages' marks: the console's own pictures) */
+.pp-dots i { width: calc(14 * var(--tu)); height: calc(14 * var(--tu)); display: block; background: center / 100% 100% no-repeat url("./assets/icons/system/tex_page_off.png"); }
+.pp-dots i.on { background-image: url("./assets/icons/system/tex_page_on.png"); }
+.pp-view { position: absolute; inset: 0; overflow: hidden; }
+.pp-view::before { content: ""; position: absolute; inset: 0; box-shadow: inset calc(-1 * var(--tu)) calc(-1 * var(--tu)) 0 rgba(0,0,0,0.3); }
+.pp-pages { position: absolute; inset: 0; display: flex; transition: transform .32s cubic-bezier(.3,.7,.3,1); }
+.pp-page { position: relative; flex: 0 0 100%; height: 100%; }
+.pp-page > .pp-tx { position: absolute; }
+/* the grey bars (Level / Trophies, Online ID...): 34 rows: 106, 198, then 176 down to 109, 117, 57; a dark row under */
+.pp-bar { position: absolute; left: 0; right: 0; height: calc(34 * var(--tu));
+  background: linear-gradient(180deg, #6a6a6a 0, #6a6a6a calc(1 * var(--tu)), #c6c6c6 calc(1 * var(--tu)), #c6c6c6 calc(2 * var(--tu)), #b0b0b0 calc(2 * var(--tu)), #acacac calc(6.5 * var(--tu)), #9e9e9e calc(12.5 * var(--tu)), #848484 calc(20.5 * var(--tu)),
+    #6c6c6c calc(29.5 * var(--tu)), #6f6f6f calc(31.5 * var(--tu)), #757575 calc(32 * var(--tu)), #757575 calc(33 * var(--tu)), #393939 calc(33 * var(--tu)));
+  box-shadow: 0 calc(-1 * var(--tu)) 0 #121212, 0 calc(1 * var(--tu)) 0 #0d0d0d, 0 calc(2 * var(--tu)) calc(2 * var(--tu)) rgba(0,0,0,0.2); }
+.pp-bar .pp-tx { position: absolute; top: calc(18.5 * var(--tu)); transform: translateY(-50%); font-size: calc(24 * var(--tu)); line-height: 1; }
+/* page 1 */
+.pp-recent { position: absolute; left: calc(38 * var(--tu)); top: calc(46 * var(--tu)); display: flex; gap: calc(9.5 * var(--tu)); }
+.pp-rt { width: calc(80 * var(--tu)); height: calc(80 * var(--tu)); display: flex; align-items: center; justify-content: center; }
+.pp-rt img { width: 100%; height: 100%; object-fit: contain; }
+.pp-rt .pp-none { width: calc(78 * var(--tu)); height: calc(78 * var(--tu)); translate: calc(1 * var(--tu)) calc(1.5 * var(--tu)); }
+/* (trophies still being read, or a won one's picture not there yet: the loading icons turn,
+   clockwise and together -- each starts where the system's loading clock is, see ui.js spinAt) */
+.pp-rt .pp-none.pp-spin { animation: xmbSpin 0.9s linear infinite; }
+.pp-star { position: absolute; left: calc(32 * var(--tu)); top: calc(191 * var(--tu)); width: calc(43 * var(--tu)); height: calc(43 * var(--tu)); object-fit: contain; }
+.pp-big { top: calc(216.5 * var(--tu)); transform: translateY(-50%); font-size: calc(47.6 * var(--tu)); line-height: 1; }
+.pp-lv { left: calc(91 * var(--tu)); }
+.pp-tot { left: calc(410 * var(--tu)); }
+.pp-pct { right: calc(418.5 * var(--tu)); top: calc(238.5 * var(--tu)); transform: translateY(-50%); font-size: calc(26.1 * var(--tu)); line-height: 1; }
+/* (the system's media progress bar, its fill in the capture's gold) */
+.mp2-bar.pp-lbar { position: absolute; left: calc(29 * var(--tu)); top: calc(256 * var(--tu)); width: calc(337 * var(--tu)); height: calc(12 * var(--tu)); margin: 0; box-sizing: border-box; }
+.mp2-fill.pp-lfill, .mp2-fill.tm-fill { transition: none;
+  background: linear-gradient(180deg, #918156 0%, #918156 5%, #e2ca5a 15%, #d9b228 25%, #bb8e00 35%, #9e7701 45%, #926f0e 55%, #917121 65%, #af9949 75%, #a8955c 85%, #998a68 95%);
+  box-shadow: inset calc(-1 * var(--tu)) 0 0 #c9a93a; }
+/* page 2: the grades' rows, the steps (one light from 179 at their top to 105 at the bottom) */
+.pp-grow { position: absolute; left: 0; width: calc(366 * var(--tu)); height: calc(33 * var(--tu)); background: linear-gradient(90deg, #383838 0, #383838 6%, #222 97%); }
+.pp-grow .pp-tx { position: absolute; left: calc(27 * var(--tu)); top: calc(17 * var(--tu)); transform: translateY(-50%); font-size: calc(22.2 * var(--tu)); line-height: 1; }
+/* (the steps: one drawn shape, ui.js) */
+.pp-steps { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+/* (no shadow under the bars' titles, nor under the numbers on the steps) */
+.pp-bar .pp-tx, .pp-gn.pp-in, .pp-gtot { filter: none; }
+.pp-gic { position: absolute; width: calc(60 * var(--tu)); height: calc(60 * var(--tu)); object-fit: contain; }
+.pp-gn { transform: translateY(-50%); font-size: calc(23.8 * var(--tu)); line-height: 1; }
+.pp-gtot { right: calc(24.5 * var(--tu)); top: calc(267.5 * var(--tu)); transform: translateY(-50%); font-size: calc(23.6 * var(--tu)); line-height: 1; }
+/* page 3 */
+.pp-iv { left: calc(27 * var(--tu)); transform: translateY(-50%); font-size: calc(23.9 * var(--tu)); line-height: 1; }
+.pp-ie { position: absolute; left: 0; right: 0; top: calc(227 * var(--tu)); height: calc(32 * var(--tu)); background: #2c2c2c; }
+/* the colours (✕ on the colour icon; maxresdefault: the panel 255 x 219, 42 px
+   left of the card, 31 px under its top, #555355; 5 x 4 flat squares of 33 px,
+   42 px apart, each with a soft shadow to its lower right; the chosen one
+   rounded, lit along its edges) */
+.pp-pal { position: absolute; left: calc(-697 * var(--tu)); top: calc(274 * var(--tu)); width: calc(255 * var(--tu)); height: calc(219 * var(--tu)); box-sizing: border-box;
+  background: #555355; border-radius: calc(2 * var(--tu)); box-shadow: inset 0 0 0 calc(1 * var(--tu)) rgba(0,0,0,0.18), calc(1 * var(--tu)) calc(1 * var(--tu)) calc(2 * var(--tu)) rgba(0,0,0,0.4);
+  display: grid; grid-template-columns: repeat(5, calc(33 * var(--tu))); grid-auto-rows: calc(33 * var(--tu));
+  column-gap: calc(8.7 * var(--tu)); row-gap: calc(9.6 * var(--tu)); padding: calc(29.5 * var(--tu)) 0 0 calc(28.5 * var(--tu)); }
+.pp-pal i { display: block; background: var(--sw); cursor: pointer; box-shadow: calc(2 * var(--tu)) calc(2 * var(--tu)) calc(3 * var(--tu)) rgba(0,0,0,0.3); }
+.pp-pal i.on { border-radius: calc(5 * var(--tu)); animation: ppSw 1.7s ease-in-out infinite; }
+@keyframes ppSw {
+  0%, 100% { box-shadow: inset 0 0 calc(5 * var(--tu)) calc(1 * var(--tu)) rgba(255,255,255,0.3), 0 0 calc(3 * var(--tu)) calc(1 * var(--tu)) rgba(255,255,255,0.25); }
+  50% { box-shadow: inset 0 0 calc(7 * var(--tu)) calc(2 * var(--tu)) rgba(255,255,255,0.6), 0 0 calc(5 * var(--tu)) calc(2 * var(--tu)) rgba(255,255,255,0.55); }
+}
+.pp-foot { position: absolute; top: calc(909 * var(--tu)); left: 0; right: 0; height: 0; font-size: calc(21.5 * var(--tu)); }
+.pp-foot > span { position: absolute; transform: translateY(-50%); display: inline-flex; align-items: center; gap: calc(11.5 * var(--tu)); cursor: pointer; white-space: nowrap; }
+.pp-foot > span:first-child { left: calc(50vw - 237.5 * var(--tu)); }
+.pp-foot > span:last-child { left: calc(50vw + 191.5 * var(--tu)); }
+
+/* ==== the selected player card, measured on the console's captures (BF84E470,
+   1D967F25, 79AF1AB0; 1920 x 1080; the card is drawn at 1.25, so each size
+   here is the capture's / 1.25): 800 x 176 at 478, 417. Its colour is
+   see-through (about 3/4), with a 2 px rim in the colour itself; the light
+   over its top (40 % white down to 11 %) ends at a clear line 88 px down, and
+   runs over the avatar's window too (160 x 159 at 8, 10: a hole in the card);
+   the bubble is 443 x 50 at 189, 13; the trophy's star always at 646. ==== */
+.item.item-card.sel .fc-root { width: 640px; height: 140.8px; }
+.item.item-card.sel .friend-card { border-radius: 11.5px;
+  background: color-mix(in srgb, var(--card-bg, #868485) 76%, transparent);
+  /* (its outline the card's own colour as it is from its middle down, IMG_3190: not a rim of
+     the colour drawn solid, which showed lighter than the see-through card around it; the light
+     stays inside it, so the top edge too is the card's colour) */
+  /* (the avatar's window: the avatar's own box and corners, so nothing of the card is under it:
+     its see-through parts show the screen behind the card) */
+  -webkit-mask-image: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 130 128.8' preserveAspectRatio='none'%3E%3Crect width='130' height='128.8' rx='6.3' ry='6.3' fill='%23fff'/%3E%3C/svg%3E"); mask-image: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 130 128.8' preserveAspectRatio='none'%3E%3Crect width='130' height='128.8' rx='6.3' ry='6.3' fill='%23fff'/%3E%3C/svg%3E");
+  -webkit-mask-position: 0 0, 5.2px 7.2px; -webkit-mask-size: 100% 100%, 130px 128.8px;
+  mask-position: 0 0, 5.2px 7.2px; mask-size: 100% 100%, 130px 128.8px; }
+/* (the light: a layer of its own inside the rim, with the rim's inner corners,
+   so no corner of the card's colour is left unlit beside it) */
+.item.item-card.sel .friend-card::before { content: ""; position: absolute; left: 1.6px; right: 1.6px; top: 1.6px; height: 69.8px; border-radius: 9.9px 9.9px 0 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.48) 0, rgba(255,255,255,0.08) 68.8px, rgba(255,255,255,0) 69.8px); }
+.item.item-card.sel .fc-avslot { left: 5.2px; top: 7.2px; width: 130px; height: 128.8px; border-radius: 6.3px; }
+/* (where the window's soft edge and the avatar's meet, the screen behind showed through as a thin
+   dark line beside the avatar, for some cards and not others depending on where in a pixel the
+   card falls: under the avatar's edge, the card's colour, only along the edge -- a pixel either
+   side of it -- and only where the picture itself is drawn (the picture as its mask, a pixel
+   wider): where it's see-through, the screen behind shows right up to the card) */
+.fc-avunder { display: none; }
+.item.item-card.sel .fc-avunder { display: block; position: absolute; left: 4.2px; top: 6.2px; width: 132px; height: 130.8px; pointer-events: none;
+  filter: drop-shadow(1px 0 0 var(--card-bg, #868485)) drop-shadow(-1px 0 0 var(--card-bg, #868485)) drop-shadow(0 1px 0 var(--card-bg, #868485)) drop-shadow(0 -1px 0 var(--card-bg, #868485));
+  -webkit-mask: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 127 125.8' preserveAspectRatio='none'%3E%3Crect width='127' height='125.8' rx='4.8' ry='4.8' fill='%23fff'/%3E%3C/svg%3E") 2.5px 2.5px / 127px 125.8px no-repeat;
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 127 125.8' preserveAspectRatio='none'%3E%3Crect width='127' height='125.8' rx='4.8' ry='4.8' fill='%23fff'/%3E%3C/svg%3E") 2.5px 2.5px / 127px 125.8px no-repeat;
+  mask-composite: exclude; }
+.fc-avunder > i { position: absolute; left: 1px; top: 1px; width: 130px; height: 128.8px; border-radius: 6.3px; background: var(--card-bg, #868485);
+  -webkit-mask: var(--avm) center / cover no-repeat; mask: var(--avm) center / cover no-repeat; }
+.fc-avunder.av-stock > i { -webkit-mask-size: 57.8% 57.8%; mask-size: 57.8% 57.8%; }
+/* (a picture trimmed to fill its window: drawn all over it) */
+.fc-root:has(.fc-avslot.av-trim) .fc-avunder > i { -webkit-mask: none; mask: none; }
+/* (the card's light goes on over the avatar, down to the same line: its end where the card's
+   own ends, 71.4 from the card's top -- the avatar's window 7.2 down --, one line across both) */
+.item.item-card.sel .fc-glass { inset: 0; height: auto; border-radius: 0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.44) 0, rgba(255,255,255,0.08) 63.2px, rgba(255,255,255,0) 64.2px); }
+/* (the star at its own place, 643 from the card's left, the level after it ("12" 8644881D,
+   "122" 79AF1AB0, "–" 1D967F25), the bubble 443 wide before it; a level too long to end
+   inside the card moves the star left, the bubble giving up that width) */
+.item.item-card.sel .fc-toprow, .item.item-card.sel .fc-toprow.no-msg { left: 151.2px; top: 9.6px; right: 9.6px; width: auto; height: 40px;
+  display: flex; align-items: center; justify-content: flex-start; gap: 8.8px; }
+/* (the bubble and its tail are one piece: the tail is the bubble's own white, cut to the tail's
+   shape, joined under the bubble's bottom edge, and the two cast one shadow together) */
+.item.item-card.sel .fc-bub { position: relative; flex: 0 1 354.4px; min-width: 0; height: 37.2px; filter: drop-shadow(0.8px 1.4px 1.1px rgba(0,0,0,0.38)); }
+.item.item-card.sel .fc-tail { left: -8.2px; top: 29px; width: 150px; height: 24px; background: #fff;
+  -webkit-mask: url('./assets/icons/system/bubble_tail.png') 0 0 / 100% 100% no-repeat; mask: url('./assets/icons/system/bubble_tail.png') 0 0 / 100% 100% no-repeat; }
+.item.item-card.sel .fc-msg { width: 100%; min-width: 0; height: 37.2px; color: #4a4a4a; background: #fff; border-radius: 9px; font-size: 15.7px; line-height: 1; padding: 0 11px;
+  text-shadow: none; }
+.item.item-card.sel .fc-msg *, .pp-msg, .pp-msg * { text-shadow: none !important; filter: none; }
+.item.item-card.sel .fc-trophy { position: relative; top: 2.2px; flex: none; display: flex; align-items: center; gap: 0; height: 40px; white-space: nowrap; }
+.item.item-card.sel .fc-trophy.fc-nolv { top: 1px; }
+/* (no comment: the bubble's room is kept, so the star is at the same place) */
+.item.item-card.sel .fc-toprow.no-msg::before { content: ""; flex: 0 1 354.4px; min-width: 0; }
+.item.item-card.sel .fc-trophy-ic { width: 35px; height: 35px; top: -4px; left: 1.2px; }
+.item.item-card.sel .fc-level { top: 0; margin-left: 2.7px; font-size: 37.6px; transform: scaleX(.925); transform-origin: 0 50%; }
+.item.item-card.sel .fc-nolv .fc-level { transform: scale(.71, 1.3); }
+.item.item-card.sel .fc-name { left: 147.4px; top: 59.6px; font-size: 25.7px; }
+.item.item-card.sel .fc-dot { position: relative; left: 2.4px; top: -2px; }
+/* (the status mark's shadow, on every card: stronger than the text's) */
+.fc-dot { filter: drop-shadow(1.2px 2px 1.5px rgba(0,0,0,0.78)); }
+.item.item-card.sel .fc-game { top: 86.8px; font-size: 14.4px; }

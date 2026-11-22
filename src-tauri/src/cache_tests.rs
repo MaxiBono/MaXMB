@@ -139,12 +139,19 @@ fn game_art_waiting_for_ffmpeg() {
     fs::create_dir_all(&g).unwrap();
     fs::write(g.join("My Game.lnk"), b"x").unwrap();
     // art put in uncut because FFmpeg wasn't there: asked for again once it is
+    // (its icon and background there: only FFmpeg decides)
+    for f in ["icon.png", "background.jpg"] { fs::write(g.join(f), b"x").unwrap(); }
     fs::write(g.join("game.json"), r#"{ "title": "My Game", "dbScraped": true, "artNeedsFfmpeg": ["icon", "background"] }"#).unwrap();
     assert!(!crate::gameart::needs_db_art(&g, false), "without ffmpeg: nothing to do yet");
     assert!(crate::gameart::needs_db_art(&g, true), "with ffmpeg: made again");
     // nothing waiting: a scraped game isn't asked about again
     fs::write(g.join("game.json"), r#"{ "title": "My Game", "dbScraped": true }"#).unwrap();
     assert!(!crate::gameart::needs_db_art(&g, true));
+    // its background removed (or its icon only the program's own): looked for again at Game Recognition
+    fs::remove_file(g.join("background.jpg")).unwrap();
+    assert!(crate::gameart::needs_db_art(&g, true), "no background: looked for again");
+    fs::write(g.join("background.jpg"), b"x").unwrap(); fs::remove_file(g.join("icon.png")).unwrap();
+    assert!(crate::gameart::needs_db_art(&g, true), "only the program's icon: looked for again");
     let _ = fs::remove_dir_all(&d);
 }
 

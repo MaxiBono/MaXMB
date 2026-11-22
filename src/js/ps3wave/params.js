@@ -96,7 +96,6 @@ export class Params {
       this.S.overlay = { name, files, k: 0, from: 0, to: 1, t0: now, secs };
     } else if (o && o.to !== 0) Object.assign(o, { from: o.k, to: 0, t0: now, secs });
   }
-  overlayMoving() { const o = this.S.overlay; return !!o && o.k !== o.to; }
   // (MaXMB: mod scales / shifts a value from the file, so Wave and Sparkles Personalization
   // works on top of the time of day instead of replacing it)
   P(key) {

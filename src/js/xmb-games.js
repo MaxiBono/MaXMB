@@ -2,6 +2,10 @@
 import { CONSOLES, FORMAT_NAMES, GAME_MEDIA, MEDIA_MODES, TRI_ZOOM, discIcon, fitArtRatio, folderName, gameName, isHomeGame, poss, winPath } from "./xmb-shared.js";
 import { assetUrl, bumpAsset, call, cmpBase, cmpNatural, cmpText, logLine, noExt, stillUrl, thumbUrl } from "./api.js";
 import { sysUrl } from "./themes.js";
+// (Game Settings > Trophies > Off, for a game with trophies won on this computer)
+// (a game known by its name alone renamed: what it's recognized as may change)
+const RENAME_WARNING = "If you change this game's name, its Trophy Collection might change if the new name is recognized as a different game. Continue?";
+const TROPHY_OFF_WARNING = "This game's trophy progress saved on this computer will be deleted, and trophies its files no longer show won't come back. Continue?";
 
 export const GameMethods = {
 
@@ -9,6 +13,17 @@ export const GameMethods = {
   // bottom (natural order: "Game 2" before "Game 10").
   _gameItems(games) {
     this._allGames = games || [];
+    // (a game's picture files changed on disk since they were last read -- replaced by hand,
+    // removed, put in by Game Recognition --: new addresses for them, so the page shows the
+    // files as they are now, not its cached copies, without a restart)
+    const seen = this._artStamps || (this._artStamps = new Map());
+    for (const g of this._allGames) {
+      const was = seen.get(g.folder);
+      if (was != null && was !== g.artStamp) for (const k of ["icon", "background", "preview", "music", "trophy"]) bumpAsset(g[k]);
+      seen.set(g.folder, g.artStamp);
+    }
+    // (the trophy level counted again: games deleted or brought back)
+    if (this._tSets && this._trophyChanged) queueMicrotask(() => this._trophyChanged());
     // a "PlayStation Home" game always starts from PSN > PlayStation®Home
     this._homeGame = (games || []).find(isHomeGame) || null;
     const list = [...(games || [])].filter((g) => g !== this._homeGame);
@@ -88,7 +103,9 @@ export const GameMethods = {
     // it, and must show the games as they are now, not as they were at start)
     this._lastGames = games;
     const items = this._gameItems(games);
-    const sig = (l) => l.map((x) => `${x.title}|${x.sub || ""}|${x.icon?.art || ""}`).join("\n");
+    // (a folder's games and their order count too: a game deleted inside a folder, or Sort By
+    // chosen there, changes only what's in it)
+    const sig = (l) => l.map((x) => `${x.title}|${x.sub || ""}|${x.icon?.art || ""}${x.children ? "[" + x.children.map((c) => `${c.title}|${c.icon?.art || ""}`).join(",") + "]" : ""}`).join("\n");
     if (sig(items) === sig(col.items)) {
       // nothing new to draw: the games' own settings (Options Band, Hide Game
       // Title On Background…) still take effect at once
@@ -97,11 +114,22 @@ export const GameMethods = {
       return;
     }
     col.items = items;
+    const pick = (list, cur, at) => { let i = cur ? list.findIndex((x) => x.title === cur.title && (!cur.game || x.game?.folder === cur.game.folder)) : -1;
+      if (i < 0 && cur) i = list.findIndex((x) => x.title === cur.title); return Math.max(0, i >= 0 ? i : Math.min(at, list.length - 1)); };
     if (this.columns[this.selCat] === col && this.levels.length === 1 && !this.overlay) {
       const cur = this.levels[0].items[this.levels[0].sel];
-      let sel = cur ? items.findIndex((x) => x.title === cur.title) : -1;
-      if (sel < 0) sel = Math.min(this.levels[0].sel, items.length - 1);
-      this.levels[0].items = col.items; this.levels[0].sel = Math.max(0, sel); this._render(); this._onSelect();
+      this.levels[0].sel = pick(items, cur, this.levels[0].sel); this.levels[0].items = col.items; this._render(); this._onSelect();
+    } else if (this.columns[this.selCat] === col && this.levels.length === 2 && !this.overlay) {
+      // inside a folder (By Album / By Format): its games as they are now -- one deleted gone,
+      // Sort By's order --; the folder gone (its last game deleted): back to the Game column
+      const top = this.levels[0], open = top.items[top.sel], inner = this.levels[1];
+      const folder = open && items.find((x) => x.children && x.title === open.title);
+      top.sel = pick(items, open, top.sel); top.items = col.items;
+      if (folder && folder.children.length) {
+        const cur = inner.items[inner.sel];
+        inner.sel = pick(folder.children, cur, inner.sel); inner.items = folder.children;
+        this._render(); this._onSelect();
+      } else { this.levels.length = 1; this._render(); this._onSelect(); }
     }
     const psn = this.columns.find((c) => c.id === "psn"); if (psn) psn.items = this._psnItems();
     if (col.sel != null && col.sel >= col.items.length) col.sel = Math.max(0, col.items.length - 1);
@@ -172,6 +200,8 @@ export const GameMethods = {
         sub: "On: When a game's options are open, a black see-through band appears behind the game's icon and title." },
       { kind: "setting", ctl: k("hideTitle"), title: "Hide Game Title On Background", icon: SI,
         sub: "On: A game with a background hides its title once the background appears." },
+      { kind: "setting", ctl: k("trophies"), title: "Trophies", icon: SI,
+        sub: "On: The game's trophies appear in Trophy Collection and count toward your trophy level." },
     ];
   },
   // Game Settings > Icon / Background / Video / Music: a file from the app's
@@ -186,7 +216,7 @@ export const GameMethods = {
     const seen = new Set();
     files = files.filter((f) => f && f.path && m.exts.includes(ext(f.path)) && !seen.has(f.path) && seen.add(f.path))
       .sort((a, b) => cmpNatural(noExt(a.path.split(/[\\/]/).pop()), noExt(b.path.split(/[\\/]/).pop())));
-    const folderName = { icon: "Photos", background: "Photos", preview: "Videos", music: "Music" }[kind];
+    const folderName = { icon: "Photos", background: "Photos", preview: "Videos", music: "Music", trophy: "Photos" }[kind];
     const items = [
       ...(g && g[m.key] ? [{ label: "Remove", id: "__none__" }] : []),
       ...(files.length ? [{ label: `From the ${folderName} Folder\u2026`, id: "__grid__" }] : []),
@@ -219,16 +249,16 @@ export const GameMethods = {
   async _gameMediaApply(folder, m, path) {
     const g = this._gameByFolder(folder);
     try { await call("game_media_set", { folder, kind: m.kind, path }); }
-    catch (e) { this.audio.play("error", 0.5); this._shotFeedback(String(e || "That file can't be used")); return; }
+    catch (e) { this.audio.play("error", 0.5); this._shotFeedback(String(e || "That file can't be used"), "error"); return; }
     this.audio.play(path ? "enter" : "back", 0.5);
-    if (g) for (const k of ["icon", "background", "preview", "music"]) bumpAsset(g[k]);
+    if (g) for (const k of ["icon", "background", "preview", "music", "trophy"]) bumpAsset(g[k]);
     await this._afterGameArt(folder);
   },
   // the Game column and the open Game Settings show the game's new art / name
   async _afterGameArt(folder) {
     await this._refreshGameColumn();
     const g = this._gameByFolder(folder);
-    if (g) for (const k of ["icon", "background", "preview", "music"]) bumpAsset(g[k]);
+    if (g) for (const k of ["icon", "background", "preview", "music", "trophy"]) bumpAsset(g[k]);
     const lvl = this._level();
     if (lvl && lvl.items.some((x) => x.act === `gm_scrape::${folder}`)) this._rebuildLevel(() => this._gameSettingItems(folder));
     const up = this.levels[this.levels.length - 2];
@@ -240,12 +270,11 @@ export const GameMethods = {
   async _gameScrape(folder) {
     const g = this._gameByFolder(folder); if (!g) return;
     const r = await this._runLocked(`gm_scrape::${folder}`, "Looking the game up...",
-      () => call("game_scrape", { folder, title: g.title }).catch(() => null));
+      () => call("game_scrape", { folder, title: g.title }).catch(() => null), (r) => r && this._afterGameArt(folder));
     if (!r) { this.audio.play("error", 0.5); return; }
     const got = [r.icon && "icon", r.background && "background", r.preview && "video", r.name && "name", r.console && `console (${r.console})`].filter(Boolean);
     this._shotFeedback(r.message || `Found: ${got.join(", ")}`);
     if (r.message) this.audio.play("error", 0.4);
-    await this._afterGameArt(folder);
   },
   _gmParse(ctl) { const m = /^gm:([^:]+):(.*)$/.exec(ctl || ""); return m ? { key: m[1], folder: m[2] } : null; },
   // Game Options Band / Hide Game Title on Background: each game's own choice
@@ -261,15 +290,87 @@ export const GameMethods = {
       case "isDisc": return g.isDisc ? "On" : "Off";
       case "optionsBand": return this._gameBandOn(g) ? "On" : "Off";
       case "hideTitle": return this._gameHideTitle(g) ? "On" : "Off";
+      case "trophies": return g.trophies === false ? "Off" : "On";
       case "created": case "starts": return g[p.key] ? this._fmtCreated(g[p.key]) : "-";
       default: return String(g[p.key] || "-");
     }
   },
+  // Trophies Off for a game whose won trophies were seen on this computer (an
+  // emulator's files, Steam's own, RPCS3): they're deleted with it, so asked first
+  async _trophyOffAsk(g, apply) {
+    const user = this.user && this.user.id;
+    const local = user ? await call("trophies_game_has_local", { user, folder: g.folder }).catch(() => false) : false;
+    if (!local) { apply(); this._layoutItems(this.root.clientWidth, this.root.clientHeight); return; }
+    const prev = this.overlay;
+    this.overlay = this.confirm;
+    this.confirm.open(TROPHY_OFF_WARNING, [{ label: "Yes", id: "yes" }, { label: "No", id: "no" }], (ch) => {
+      this.confirm.close(); this.overlay = prev;
+      if (ch && ch.id === "yes") { this.audio.play("enter", 0.5); apply(); }
+      this._layoutItems(this.root.clientWidth, this.root.clientHeight);
+    }, () => { this.confirm.close(); this.overlay = prev; });
+  },
   async _gmSave(folder, patch) {
     try { await call("game_meta_save", { folder, patch }); } catch (e) { this.audio.play("error", 0.4); return; }
+    // (renamed: its folder in content\Games takes the name typed, lib.rs game_folder_rename)
+    if ("title" in patch && patch.title) folder = await this._gmFolderRename(folder, patch.title);
     await this._refreshGameColumn();
-    const lvl = this._level();
-    if (lvl && lvl.items.some((i) => i.ctl && i.ctl.startsWith("gm:"))) this._rebuildLevel(() => this._gameSettingItems(folder));
+    // (renamed: its trophy list takes the name, and so do the added Platinum's name and description)
+    if ("title" in patch && this._trophyReread) this._trophyReread();
+    // (and it's looked up again under the new name, without waiting on it)
+    if ("title" in patch) this._gameRenamed(folder);
+  },
+  // The game's folder renamed after its new name: the game takes its new folder everywhere
+  // the page holds it (the games read, what was played last, Game Settings' open menus).
+  async _gmFolderRename(folder, title) {
+    let to = folder;
+    try { to = await call("game_folder_rename", { folder, title: String(title) }) || folder; } catch (e) { return folder; }
+    if (to === folder) return folder;
+    const g = this._gameByFolder(folder); if (g) g.folder = to;
+    // (its trophies: under the new folder at once, as trophies.rs folder_renamed keeps them)
+    const ts = this._tSets && this._tSets.get(folder);
+    if (ts) { this._tSets.delete(folder); this._tSets.set(to, { ...ts, folder: to }); }
+    const played = this.user && this.user.gamePlayed;
+    if (played && played[folder] != null) { played[to] = played[folder]; delete played[folder]; this._persistUser(); }
+    // (Game Settings > Game Information open on this game: its menu and the list above it made
+    // again with the new folder, the cursor where it was)
+    const n = this.levels ? this.levels.length : 0;
+    const at = n ? this.levels.findIndex((l) => (l.items || []).some((i) => this._gmParse(i.ctl)?.folder === folder)) : -1;
+    if (at >= 0) {
+      const lvl = this.levels[at], sel = lvl.sel;
+      lvl.items = this._gameSettingItems(to); lvl.sel = Math.min(sel, lvl.items.length - 1);
+      const up = this.levels[at - 1];
+      if (up && (up.items || []).some((i) => i.kind === "drill" && i.childrenFn)) {
+        const cur = up.items[up.sel];
+        up.items = this._gameSettingsList();
+        const i = up.items.findIndex((x) => x.title === gameName(this._gameByFolder(to) || { title }));
+        up.sel = i >= 0 ? i : Math.min(up.sel, up.items.length - 1);
+        if (i < 0 && cur) { const j = up.items.findIndex((x) => x.title === cur.title); if (j >= 0) up.sel = j; }
+      }
+      this._render(); this._onSelect();
+    }
+    return to;
+  },
+  // A game renamed by hand: its art and its trophies' source looked up again under the new
+  // name (lib.rs game_renamed: only a game known by its name alone; with nothing found it
+  // keeps what it has; without the internet, at the next start with it)
+  async _gameRenamed(folder) {
+    const g = this._gameByFolder(folder), user = this.user && this.user.id; if (!g || !user) return;
+    let r = ""; try { r = await call("game_renamed", { user, folder, title: String(g.title || ""), launch: String(g.launch || "") }); } catch (e) { return; }
+    await this._gameLookedUp(r, [folder]);
+  },
+  async _gameLookedUp(r, folders) {
+    if (r === "art") { for (const f of folders) { const g = this._gameByFolder(f); if (g) for (const k of ["icon", "background", "preview"]) bumpAsset(g[k]); } await this._afterGameArt(folders[0]); }
+    if ((r === "art" || r === "done") && this._trophyLoad) { await this._trophyLoad(true).catch(() => {}); if (this._trophyReread) this._trophyReread(); }
+  },
+  // (the games renamed while there was no internet: looked up at a start with it)
+  async _gamesRenamedPending() {
+    const user = this.user && this.user.id; if (!user) return;
+    let done = []; try { done = await call("game_renamed_pending", { user }) || []; } catch (e) { return; }
+    if (done.length) await this._gameLookedUp("art", done);
+    // (a game's Game Settings open: shown again with what was found)
+    const lvl = this.levels && this.levels.length ? this._level() : null;
+    const gm = lvl && (lvl.items || []).map((i) => this._gmParse(i.ctl)).find((p) => p && done.includes(p.folder));
+    if (gm) this._rebuildLevel(() => this._gameSettingItems(gm.folder));
   },
   _gmAdjust(ctl, dir) {
     const p = this._gmParse(ctl), g = p && this._gameByFolder(p.folder);
@@ -287,17 +388,37 @@ export const GameMethods = {
       g.optionsBand = !this._gameBandOn(g); this._gmSave(g.folder, { optionsBand: g.optionsBand });
     } else if (p.key === "hideTitle") {
       g.hideTitle = !this._gameHideTitle(g); this._gmSave(g.folder, { hideTitleOnBackground: g.hideTitle });
+    } else if (p.key === "trophies") {
+      // (Off: out of Trophy Collection and the trophy level at once; On: read again)
+      const apply = () => { g.trophies = g.trophies === false; this._gmSave(g.folder, { trophies: g.trophies }).then(() => this._trophyToggled(g.folder, g.trophies)); };
+      if (g.trophies === false) apply();
+      else { this._trophyOffAsk(g, apply); return; }
     }
     this._layoutItems(this.root.clientWidth, this.root.clientHeight);
   },
   _gmEdit(ctl) {
     const p = this._gmParse(ctl), g = p && this._gameByFolder(p.folder);
     if (!g) return;
-    if (["parentalControl", "console", "isDisc", "optionsBand", "hideTitle"].includes(p.key)) { this._gmAdjust(ctl, 1); return; }
+    if (["parentalControl", "console", "isDisc", "optionsBand", "hideTitle", "trophies"].includes(p.key)) { this._gmAdjust(ctl, 1); return; }
     const labels = { title: "Title", created: "Created", size: "Size", version: "Version", starts: "Starts" };
     this.overlay = this.textForm;
     this.textForm.open({ title: `${gameName(g)}: ${labels[p.key]}`, fields: [{ key: "v", label: labels[p.key], value: g[p.key] || "" }], submit: "Confirm" },
-      async (out) => { this.textForm.close(); this.overlay = null; g[p.key] = String(out.v || "").trim(); await this._gmSave(g.folder, { [p.key]: g[p.key] }); },
+      async (out) => {
+        this.textForm.close(); this.overlay = null;
+        const v = String(out.v || "").trim();
+        const save = async () => { g[p.key] = v; await this._gmSave(g.folder, { [p.key]: v }); };
+        if (p.key !== "title" || v === String(g.title || "") || !v) { await save(); return; }
+        // (renamed, a game known by its name alone: told first that its trophies may change)
+        const user = this.user && this.user.id;
+        const byId = user ? await call("game_known_by_id", { user, folder: g.folder, title: String(g.title || ""), launch: String(g.launch || "") }).catch(() => true) : true;
+        if (byId) { await save(); return; }
+        this.overlay = this.confirm;
+        this.confirm.open(RENAME_WARNING, [{ label: "Yes", id: "yes" }, { label: "No", id: "no" }], async (ch) => {
+          this.confirm.close(); this.overlay = null;
+          if (ch && ch.id === "yes") { this.audio.play("enter", 0.5); await save(); }
+          this._layoutItems(this.root.clientWidth, this.root.clientHeight);
+        }, () => { this.confirm.close(); this.overlay = null; });
+      },
       () => { this.textForm.close(); this.overlay = null; });
   },
   // ---- Game Recognition submenu (System Settings) ---------------------------
@@ -313,8 +434,6 @@ export const GameMethods = {
       { kind: "action", act: "gsrc_add", title: "Add Source Folder", icon: SI },
       { kind: "drill", title: "Recognized Games", icon: SI, childrenFn: this._detectedGameItems,
         sub: "Games found on your chosen game folders. Choose one to delete it from the system's content\\Games directory (The actual game doesn't get deleted)." },
-      { kind: "drill", title: "Game Databases", icon: SI, childrenFn: this._scrapeItems,
-        sub: "Enter the keys to automatically access the game art in SteamGridDB, TheGamesDB or RAWG." },
       ...(srcs.length ? [{ kind: "action", act: "gsrc_scan", title: "Game Recognition", icon: SI,
         sub: "Looks for new games in the source folders now. New games are also found every time you open the Game column." }] : []),
       ...srcs.map((p, i) => ({ kind: "action", act: `gsrc_remove::${i}`, title: base(p), icon: { sys: "icon_game.png" },
@@ -343,7 +462,7 @@ export const GameMethods = {
       if (cur) { const i = items.findIndex((x) => x.id === cur); if (i > 0) { this.listPicker.i = i; this.listPicker._render(); } }
     });
   },
-  // ---- Game Databases (Game Recognition) -------------------------------------
+  // ---- Game Art Databases (Game Settings) -------------------------------------
   _scrapeCfg() { return (this.settings.scrape ||= {}); },
   _scrapeItems() {
     const SI = { sys: "icon_setting_item.png" };
@@ -351,8 +470,7 @@ export const GameMethods = {
     const key = (k, title) => ({ kind: "action", act: `scrape_key::${k}`, title, icon: SI,
       sub: c[k] ? (/password/i.test(k) ? "\u2022".repeat(8) : c[k]) : "Not Set" });
     return [
-      { kind: "setting", ctl: "scrapeauto", title: "Automatic Scraping", icon: SI,
-        sub: "On: Automatically search game art when a game gets recognized by the system." },
+      { kind: "action", act: "art_db", title: "Game Art Database Scraping", icon: SI },
       key("sgdbKey", "SteamGridDB API Key"),
       key("tgdbKey", "TheGamesDB API Key"),
       key("rawgKey", "RAWG API Key"),
@@ -420,12 +538,14 @@ export const GameMethods = {
     this._picking = false;
     if (!path) return;
     const list = this.settings.gameSources || (this.settings.gameSources = []);
-    if (list.includes(path)) { this.audio.play("error", 0.4); this._shotFeedback("This folder is already a source folder"); return; }
+    if (list.includes(path)) { this.audio.play("error", 0.4); this._shotFeedback("This folder is already a source folder", "error"); return; }
     const mode = await this._gsrcAskMode(path);
     if (!mode) return;
     this._gsrcSetMode(path, mode);
     list.push(path);
     await this._persistSettings(); this.audio.play("enter", 0.5);
+    // (its games found before whose folders are gone: made again)
+    try { await call("game_sources_added", { source: path }); } catch (e) {}
     this._rebuildLevel(this._gameRecognitionItems);
     const lvl = this._level(); const i = lvl.items.findIndex((x) => x.act === "gsrc_scan");
     if (i >= 0) { lvl.sel = i; this._render(); this._onSelect(); }
@@ -472,20 +592,24 @@ export const GameMethods = {
     if (this._scanning) return;
     this._scanning = true;
     let n = 0;
-    // the games are recognized, then (Automatic Scraping) their art is fetched,
-    // the menu waiting on both
-    const run = async (retitle) => {
-      const made = await call("game_sources_sync").catch(() => 0);
-      let w = 0; try { w = await call("game_scrape_waiting"); } catch (e) {}
-      if (w && retitle) { retitle("Getting game art online..."); await call("game_scrape_queued").catch(() => 0); }
-      return made;
-    };
-    try { n = (quiet ? await run(null) : await this._runLocked("gsrc_scan", "Recognizing games...", run)) || 0; } catch (e) {}
+    // (only found: their art comes from Steam Game Art Scraping and Game Art Database Scraping)
+    const run = () => call("game_sources_sync").catch(() => 0);
+    const after = async () => { await this._loadDetected(); await this._refreshGameColumn(); };
+    try { n = (quiet ? await run(null) : await this._runLocked("gsrc_scan", "Recognizing games...", run, after)) || 0; } catch (e) {}
+    if (quiet) await after();
     this._scanning = false;
-    await this._loadDetected();
-    await this._refreshGameColumn();
     if (!quiet || n) this._shotFeedback(n ? `${n} new game${n === 1 ? "" : "s"} added` : "No new games found");
-    if (quiet) this._scrapeWaiting();
+  },
+  // Game Settings > Steam Game Art Scraping ("art_steam") / Game Art Databases > Game Art
+  // Database Scraping ("art_db"): every game's art looked for, the menu waiting on it
+  async _artScrape(act) {
+    const steam = act === "art_steam";
+    const r = await this._runLocked(act, steam ? "Getting game art from Steam..." : "Getting game art online...",
+      () => call(steam ? "game_art_steam" : "game_art_db").then((n) => ({ n: n | 0 }), (e) => ({ err: String(e) })),
+      () => this._refreshGameColumn());
+    if (!r) return;
+    if (r.err) { this.audio.play("error", 0.4); this._shotFeedback(r.err, "error"); return; }
+    this._shotFeedback(r.n ? `Art found for ${r.n} game${r.n === 1 ? "" : "s"}` : "No new art found");
   },
   _gsrcDelete(folder) {
     const g = (this._detected || []).find((x) => x.folder === folder);
@@ -624,6 +748,13 @@ Are you sure you want to continue?`,
       e.classList.toggle("tri-up", on && at >= 0 && j < at);
       e.classList.toggle("tri-down", on && at >= 0 && j > at);
     });
+    // (a user's own picture, wide: grown, its left edge would reach the signed-in user's diamond)
+    const dia = el.querySelector(".user-diamond"), av = el.querySelector(".item-avatar, .item-sys");
+    if (on && dia && av) {
+      const a = av.getBoundingClientRect(), d = dia.getBoundingClientRect(), gap = 0.6 * window.innerWidth / 100;
+      const left = a.left + a.width / 2 - a.width * TRI_ZOOM / 2;
+      el.style.setProperty("--tri-dx", `${Math.max(0, d.right + gap - left).toFixed(1)}px`);
+    } else if (!on) el.style.removeProperty("--tri-dx");
   },
   // (a game's △ menu > Search: its title searched on the internet. This had the
   // same name as the browser's own Search (on-screen keyboard), which took its

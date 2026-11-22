@@ -26,15 +26,24 @@ pub struct Game {
     // game only; None = not chosen yet: the band on, the title shown)
     #[serde(default)] pub options_band: Option<bool>,
     #[serde(default)] pub hide_title: Option<bool>,
+    /// Game Settings > Trophies (game.json "trophies"; None = On)
+    #[serde(default)] pub trophies: Option<bool>,
     #[serde(default)] pub launch: String,
     #[serde(default)] pub args: Vec<String>,
     pub icon: Option<String>,
     pub background: Option<String>,
     pub preview: Option<String>,
     pub music: Option<String>,
+    /// its banner in Trophy Collection (trophy.* in its folder: chosen, dropped in, or Steam's
+    /// main capsule put in by Game Recognition)
+    #[serde(default)] pub trophy: Option<String>,
     /// among games with the same title: 1 for the one that has been there
     /// longest, 2, 3... for the others (shown as "Title (2)")
     #[serde(default)] pub copy: u32,
+    /// when its icon, background, preview and music files were last changed (their dates): a
+    /// picture changed on disk -- by hand, by Game Recognition -- gets a new address in the
+    /// page, so the old one isn't shown from the webview's cache
+    #[serde(default)] pub art_stamp: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -289,7 +298,7 @@ pub struct Settings {
     // games in the source folders below (each gets a folder in content/Games)
     #[serde(default = "mode_app")] pub game_mode: String,
     #[serde(default)] pub game_sources: Vec<String>,
-    // Game Databases (Settings): API keys and Automatic Scraping
+    // Game Art Databases (Game Settings): API keys
     #[serde(default)] pub scrape: crate::gameart::ScrapeSettings,
     // custom sections (System Settings > Sections): [{ id, name, icon, after,
     // subs: [{ title, desc, icon, folders: [..], type }] }]

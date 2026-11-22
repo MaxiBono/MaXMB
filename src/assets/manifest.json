@@ -5,7 +5,8 @@
     "enter": "enter.ogg",
     "back": "back.ogg",
     "error": "enter.ogg",
-    "coldboot": "coldboot.ogg"
+    "coldboot": "coldboot.ogg",
+    "trophy": "snd_trophy.wav"
   },
   "defaults": {
     "photo": "default_photo.png",

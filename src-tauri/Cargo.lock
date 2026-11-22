@@ -2579,7 +2579,7 @@ dependencies = [
 
 [[package]]
 name = "ps3xmb"
-version = "1.1.4"
+version = "2.0.0"
 dependencies = [
  "chrono",
  "flate2",

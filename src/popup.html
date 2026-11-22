@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MaXMB</title>
+  <link rel="stylesheet" href="./trophies.css" />
+  <style>
+    /* the trophy pop-up's own window (trophypop.rs): the box fills it */
+    @font-face { font-family: "Rodin"; src: url("./assets/fonts/rodin.ttf") format("truetype");
+      ascent-override: 78%; descent-override: 19.3%; line-gap-override: 6.2%; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    body { font-family: "Rodin", "Segoe UI", system-ui, sans-serif; user-select: none; }
+    /* the window: room for the biggest box (a long name shown whole, 535 wide, trophies.css)
+       and its shadow (8 of its pixels around it), 551 x 416 (trophypop.rs); the box at its top
+       right, the rest of the window clear */
+    :root { --tu: calc(100vh / 416); }
+    .tpop { top: calc(8 * var(--tu)); right: calc(8 * var(--tu)); color: var(--ptext, #fff); }
+    /* a PS3 theme's notification picture (sent by the menus with the font and Text Color) */
+    .tpop.tnot { --tb: calc(15 * var(--tu)); background: none; box-shadow: none; border: var(--tb) solid transparent; border-radius: 0;
+      border-image: var(--tnotify) 22 fill / var(--tb) stretch; }
+  </style>
+</head>
+<body>
+  <div class="tpop"></div>
+  <script type="module" src="./js/popup.js"></script>
+</body>
+</html>

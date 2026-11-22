@@ -55,7 +55,10 @@ pub fn decode_audio(app: tauri::AppHandle, path: String) -> Result<String, Strin
     };
 
     match res {
-        Ok(()) => Ok(out.to_string_lossy().to_string()),
+        Ok(()) => {
+            if let Some(d) = out.parent() { crate::cachesweep::note(d, DECODED_INDEX, &fname, &src); }
+            Ok(out.to_string_lossy().to_string())
+        }
         Err(e) => {
             let _ = fs::remove_file(&out);
             Err(e)
@@ -63,6 +66,13 @@ pub fn decode_audio(app: tauri::AppHandle, path: String) -> Result<String, Strin
     }
 }
 
+/// The decoded songs noted (cachesweep.rs), in each of their two folders.
+const DECODED_INDEX: &str = "decoded.tsv";
+/// The decoded songs of files changed or gone since: deleted (at start).
+pub fn sweep_decoded(app: &tauri::AppHandle) -> usize {
+    let f = |p: &Path| vec![cache_name(p)];
+    crate::cachesweep::sweep(&crate::paths::temp_dir(app), DECODED_INDEX, &f) + crate::cachesweep::sweep(&crate::paths::preloaded_songs_dir(app), DECODED_INDEX, &f)
+}
 /// Decoded-WAV file name keyed by source identity so we decode each track once.
 fn cache_name(src: &Path) -> String {
     let meta = src.metadata().ok();
@@ -136,18 +146,22 @@ fn dir_files(dir: &Path, out: &mut Vec<PathBuf>) {
 ///   "thumbs"  — small copies of photos and covers
 ///   "wave"    — the Original wave's prepared start (Wave Cache)
 ///   "visualizers" — nothing on disk (the visualizers' data is only in memory)
-///   "all"     — every category above
+///   "all"     — every category above, and the Steam friends' pictures and descriptions
 /// The files are listed first, then deleted one by one, reporting progress.
 pub fn clear_cache(app: &tauri::AppHandle, category: &str, progress: &dyn Fn(usize, usize)) -> Result<(), String> {
     let mut files: Vec<PathBuf> = Vec::new();
     let all = category == "all";
-    if !matches!(category, "decoded" | "covers" | "icons" | "videos" | "thumbs" | "wave" | "visualizers" | "all") { return Err(format!("unknown cache category: {category}")); }
+    if !matches!(category, "decoded" | "covers" | "icons" | "videos" | "thumbs" | "wave" | "visualizers" | "trophies" | "steam" | "all") { return Err(format!("unknown cache category: {category}")); }
     if all || category == "decoded" { temp_decodes(app, &mut files); dir_files(&crate::paths::preloaded_songs_dir(app), &mut files); }
     if all || category == "covers" { dir_files(&crate::paths::covers_dir(app), &mut files); }
     if all || category == "videos" { dir_files(&crate::paths::temp_dir(app).join("video"), &mut files); dir_files(&crate::paths::video_cache_app_dir(app), &mut files); }
     if all || category == "icons" { files.push(crate::paths::icon_shades_temp_file(app)); files.push(crate::paths::icon_shades_app_file(app)); }
     if all || category == "thumbs" { let d = crate::paths::thumbs_dirs(app); dir_files(&d.temp, &mut files); dir_files(&d.app, &mut files); }
     if all || category == "wave" { files.push(crate::paths::wave_cache_temp_file(app)); files.push(crate::paths::wave_cache_app_file(app)); }
+    // (Trophy Collection's: the saved lists, pictures and what the stores told; never the trophies won)
+    if all || category == "trophies" { files.extend(crate::trophies::cache_files(app)); crate::trophies::forget_memory(); }
+    // (Steam Friends' -- pictures, descriptions, colours, levels -- and the Steam account's picture)
+    if all || category == "steam" { files.extend(crate::steamfriends::cache_files(app)); crate::steamfriends::forget_memory(); }
     // ("visualizers": only in memory, freed by the page itself)
     let total = files.len();
     progress(0, total);
@@ -335,7 +349,11 @@ fn decode_with_ffmpeg(app: &tauri::AppHandle, src: &Path, out: &Path) -> Result<
          resources/ffmpeg/ (or install ffmpeg on PATH) to enable WMA/ATRAC playback"
             .to_string()
     })?;
-    let status = crate::media::no_window(&mut Command::new(&ff))
+    ffmpeg_decode(&ff, src, out)
+}
+/// The song decoded to a 16-bit stereo WAV by this FFmpeg.
+pub(crate) fn ffmpeg_decode(ff: &Path, src: &Path, out: &Path) -> Result<(), String> {
+    let status = crate::media::no_window(&mut Command::new(ff))
         .args([
             "-y",
             "-hide_banner",

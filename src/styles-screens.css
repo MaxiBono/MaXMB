@@ -1,0 +1,261 @@
+/* MaXMB's look, part 5 of 8: Custom Color, Change Keybinds, the PSN Sign-In / Sign-Up screens and Users. The parts are loaded one after another, in this order
+   (index.html), as one stylesheet. */
+/* ---------- Custom Color picker (Turn-Off-style panel) ---------- */
+.colorpick { position: fixed; inset: 0; z-index: 76; display: none; align-items: center; justify-content: center;
+  background: rgba(10,12,20,0.22); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: var(--text); }
+.colorpick.show { display: flex; }
+.colorpick::before, .colorpick::after { content: ""; position: fixed; left: 0; right: 0; height: 1.5px;
+  background: rgba(255,255,255,0.85); pointer-events: none; }
+.colorpick::before { top: 18.5vh; }
+.colorpick::after { top: 81.5vh; }
+.cp-inner { width: 46vh; display: flex; flex-direction: column; align-items: stretch; gap: 0.9vh; }
+.cp-title { text-align: center; font-size: 2.13vh; margin-bottom: 0.4vh; text-shadow: 0 1px 8px rgba(0,0,0,0.5); }
+.cp-top { display: flex; align-items: center; justify-content: center; gap: 2.4vh; padding: 0.4vh; border-radius: 0.6vh; }
+.cp-wheelwrap { position: relative; width: 24vh; height: 24vh; }
+.cp-wheel { width: 100%; height: 100%; border-radius: 50%; cursor: crosshair; display: block;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.35), 0 0.4vh 1.6vh rgba(0,0,0,0.45); }
+.cp-knob { position: absolute; width: 1.6vh; height: 1.6vh; border-radius: 50%; transform: translate(-50%, -50%);
+  border: 0.25vh solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.6), 0 0 0.6vh rgba(0,0,0,0.6); pointer-events: none; }
+.cp-swatch { width: 6vh; height: 6vh; border-radius: 0.6vh; border: 1px solid rgba(255,255,255,0.5); overflow: hidden;
+  background: repeating-conic-gradient(#888 0 25%, #ccc 0 50%) 0 0 / 1.2vh 1.2vh; }
+.cp-swfill { width: 100%; height: 100%; }
+.cp-row { display: grid; grid-template-columns: 10vh 1fr 5vh; align-items: center; gap: 1vh; font-size: 1.9vh;
+  padding: 0.3vh 0.6vh; border-radius: 0.5vh; }
+.cp-lab { opacity: 0.85; }
+.cp-val { text-align: right; font-variant-numeric: tabular-nums; }
+.cp-range { width: 100%; accent-color: #d8e4f0; cursor: pointer; }
+.cp-row[data-row="hex"] { grid-template-columns: 7vh 1fr; }
+.cp-hex { font-family: var(--ui-font); font-size: 2vh; color: var(--text); background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.4); border-radius: 0.4vh; padding: 0.4vh 0.8vh; text-transform: uppercase; }
+.cp-btns { display: flex; justify-content: center; gap: 2vw; margin-top: 0.8vh; padding: 0.4vh; }
+.cp-btns button { font-family: var(--ui-font); font-size: 2.1vh; width: 9vw; height: 3.9vh; color: #fff; border: none;
+  border-radius: 0.35vh; cursor: pointer; background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); }
+/* Cancel and Confirm are the same blue (as in the avatar selection); the one
+   the cursor is on gets the white frame */
+.cp-btns .cp-cancel { background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); }
+/* no highlight box around the button row (the focused button is enough) */
+.cp-btns.cp-focus { background: none; box-shadow: none; }
+.cp-focus { background: rgba(255,255,255,0.1); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.35); }
+/* (its ✕ Enter / ○ Back where the big card's are, every Custom Color the same: the hints at
+   909 of 1080, the ✕ 237.5 left of the middle, the ○ 191.5 right of it, their size and gap) */
+.colorpick .confirm-foot { position: fixed; --tu: calc(100vh / 1080); display: block; left: 0; right: 0; padding: 0; gap: 0;
+  top: calc(909 * var(--tu)); height: 0; }
+.colorpick .confirm-foot > .cf-hint { position: absolute; top: 0; transform: translateY(-50%); gap: calc(11.5 * var(--tu)); font-size: calc(21.5 * var(--tu)); white-space: nowrap; }
+.colorpick .confirm-foot > .cf-hint:first-child { left: calc(50vw - 237.5 * var(--tu)); }
+.colorpick .confirm-foot > .cf-hint:last-child { left: calc(50vw + 191.5 * var(--tu)); }
+/* custom icon colours can carry an opacity */
+:root.icon-alpha .sysicon:not(.coloricon) { filter: opacity(var(--icon-alpha, 1)); }
+
+/* before a user logs in the pointer is gone (and parked in the middle) */
+body.cursor-locked, body.cursor-locked * { cursor: none !important; }
+/* a file / folder window open: the pointer always shows */
+body.picking.hide-cursor, body.picking.hide-cursor *, body.picking.cursor-locked, body.picking.cursor-locked * { cursor: default !important; }
+
+/* ---------- Change Keybinds (laid out like the Sign-In screen, see .uisheet) ---------- */
+.kb-inner { position: fixed; left: 50%; transform: translateX(-50%); top: 19.6vh; width: 62vw; display: flex; flex-direction: column; gap: 0.6vh; }
+.kb-head, .kb-row { display: grid; grid-template-columns: 12vw 12vw 1fr 1fr; align-items: center; gap: 1vw; }
+.kb-head { font-size: 1.6vh; opacity: 0.65; padding: 0 0.6vw; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); }
+.kb-list { max-height: 44.5vh; overflow-y: auto; display: flex; flex-direction: column; gap: 0.35vh; padding: 1.2vh 1vw 1.2vh 0.9vw; }
+.kb-row { font-size: 1.9vh; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); }
+.kb-pad { opacity: 0.95; }
+.kb-name { opacity: 0.65; }
+/* the key slots: the Sign-In fields */
+.kb-key { font-family: var(--ui-font); font-size: 1.8vh; color: #fff; height: 3.3vh; cursor: pointer; box-sizing: border-box;
+  background: rgba(0,12,30,0.18); border: 1px solid rgba(225,235,245,0.38); border-radius: 0.3vh;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); transition: background .15s ease, border-color .15s ease; }
+.kb-key:hover { background: rgba(255,255,255,0.1); }
+.keybinds .kb-key.act-focus { outline: none; filter: none; border: 2px solid rgba(255,255,255,0.92); animation: tfxFill 3.4s ease-in-out infinite; }
+/* (no blue anywhere: the key waiting for a press glows white like the focus;
+   clicked buttons keep no focus ring) */
+.kb-key.listening { border: 2px solid #fff; animation: tfxFill 1.6s ease-in-out infinite; }
+.kb-key:focus, .kb-key:focus-visible, .keybinds button:focus, .keybinds button:focus-visible { outline: none; }
+.kb-mouse { margin-top: 0.6vh; font-size: 1.5vh; opacity: 0.65; text-align: center; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); }
+.kb-btns { position: fixed; left: 0; right: 0; top: 74.2vh; display: flex; justify-content: center; gap: 2.4vw; }
+.kb-btns .ui-btn { min-width: 8vw; }
+.kb-wait { position: fixed; left: 0; right: 0; top: 14.6vh; transform: translateY(-50%); text-align: center; font-size: 2vh; color: #8fd3ff;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.6); opacity: 0; transition: opacity .2s; }
+.kb-wait.on { opacity: 1; }
+/* screenshot saved */
+.shot-toast { position: fixed; left: 5vw; bottom: 6vh; z-index: 95; display: flex; align-items: center; gap: 1vh;
+  padding: 1vh 1.6vh; border-radius: 0.5vh; font-size: 2vh; color: #f2f2f2; pointer-events: none;
+  background: rgba(10,12,20,0.7); border: 1px solid rgba(255,255,255,0.25); opacity: 0; transition: opacity .3s ease; }
+.shot-toast.on { opacity: 1; }
+.shot-flash { position: fixed; inset: 0; z-index: 96; background: #fff; opacity: 0; pointer-events: none; transition: opacity .35s ease; }
+.shot-flash.on { opacity: 0.35; transition: none; }
+
+
+/* ---------- PSN Sign-In / Sign-Up screens (laid out from the 1920x1080 console captures) ----------
+   Every menu with the two rules blurs what is behind it, like the Sign-In capture
+   (Remove Menu Blur turns that off). */
+.form.psnsign { display: block; background: none; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.form.psnsign::before, .form.psnsign::after { height: 1px; background: rgba(235,240,245,0.62); }
+.form.psnsign::before { top: 17.13vh; }
+.form.psnsign::after { top: 82.13vh; }
+.psnsign > * { position: fixed; }
+.psnsign .ps-hold { left: 8.52vw; right: 8.52vw; top: 14.6vh; transform: translateY(-50%); font-size: 2.12vh; color: #f2f4f6;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0; transition: opacity .2s; }
+.psnsign .ps-hold.on { opacity: 1; }
+.psnsign .ps-lab { left: 28.59vw; font-size: 2.12vh; color: #f4f6f8; transform: translateY(-50%);
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); white-space: nowrap; }
+.psnsign .ps-field { left: 28.39vw; width: 43.39vw; height: 3.52vh; box-sizing: border-box; display: block;
+  background: rgba(0,12,30,0.18); border: 1px solid rgba(225,235,245,0.38); border-radius: 0.3vh;
+  cursor: text; transition: background .15s ease, border-color .15s ease; }
+/* the focused field: a whole rounded box glowing all over (the Create New User field) */
+.psnsign .ps-field.sel { border: 2px solid rgba(255,255,255,0.92); animation: tfxFill 3.4s ease-in-out infinite; }
+.psnsign .ps-in { width: 100%; height: 100%; box-sizing: border-box; padding: 0 0.6vw; border: none; outline: none; background: none;
+  font-family: var(--ui-font); font-size: 2.05vh; color: #fff; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); }
+.psnsign .ps-check { left: 37.43vw; display: flex; align-items: center; font-size: 2.12vh; color: #eef1f4;
+  transform: translateY(-50%); cursor: pointer; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); white-space: nowrap; }
+.psnsign .ps-check.sel span { animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.psnsign .ps-box { width: 4.98vh; height: 4vh; flex: 0 0 auto; display: block; pointer-events: none; }
+/* greyed out (Auto Sign-In on): dimmed, not grey: the words go dark and the
+   tick keeps some of its blue (E3AD8BD1 capture) */
+.psnsign .ps-check.dis { color: rgba(48,52,58,0.78); cursor: default; text-shadow: 0 0.1vh 0.25vh rgba(255,255,255,0.22); }
+.psnsign .ps-check.dis .ps-box { filter: brightness(0.42) saturate(0.85); }
+.psnsign .ps-check.dis.sel span { animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.ps-btn, .ui-btn { font-family: var(--ui-font); font-size: 2.12vh; padding: 0 1.2vw; cursor: pointer; height: 4.17vh; box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,0.55); border-radius: 0.3vh; color: #fff; white-space: nowrap;
+  background: linear-gradient(180deg, rgba(225,228,232,0.62), rgba(165,170,176,0.55) 55%, rgba(140,146,152,0.6));
+  text-shadow: 0 0.1vh 0.2vh rgba(0,0,0,0.5); transition: box-shadow .2s, border-color .2s; }
+.ps-btn.off, .ui-btn.off { color: rgba(70,74,80,0.9); text-shadow: 0 0.1vh 0 rgba(255,255,255,0.35); }
+.ps-btn.sel, .ui-btn.sel { border-color: #fff; animation: tfxBtnFill 3.4s ease-in-out infinite; }
+.psnsign .ps-btn { left: 50.08vw; transform: translateX(-50%); min-width: 5.73vw; }
+.psnsign.ps-signin .ps-b1 { width: 5.73vw; padding: 0; }
+.psnsign.ps-signin .ps-b2 { width: 15.68vw; height: 4.07vh; padding: 0; }
+.psnsign .ps-foot { left: 0; right: 0; top: 0; height: 0; }
+.psnsign .ps-hint { position: fixed; display: inline-flex; align-items: center; gap: 0.7vw; font-size: 2.12vh; color: #f2f4f6;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); transform: translateY(-50%); top: 84.9vh; white-space: nowrap; }
+.psnsign .ps-h1 { left: 37.5vw; }
+.psnsign .ps-h2 { left: 60.57vw; }
+.psnsign .ps-glyph { font-size: 2.65vh; line-height: 1; font-weight: 700; }
+/* Signing in... / Please wait. (the loading clock shows at the top right) */
+.psnsign .ps-wait { left: 0; right: 0; top: 49.58vh; transform: translateY(-50%); text-align: center; font-size: 2.12vh; color: #f4f6f8;
+  line-height: 3.24vh; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); }
+body.psn-loading #infobox { visibility: visible !important; z-index: 72; }
+/* menus without a console capture (Background Music, Change Keybinds, lists)
+   drawn like the Sign-In screen: its two rules, the title over the top one,
+   its buttons and its ✕ / ○ hints under the bottom one */
+.form.show.uisheet { display: block; background: rgba(0,0,0,0.12); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.form.show.uisheet::before, .form.show.uisheet::after { height: 1px; background: rgba(235,240,245,0.62); }
+.form.show.uisheet::before { top: 17.13vh; }
+.form.show.uisheet::after { top: 82.13vh; }
+.us-title { position: fixed; left: 8.52vw; right: 8.52vw; top: 14.6vh; transform: translateY(-50%); font-size: 2.3vh; color: #f4f6f8;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.us-body { position: fixed; left: 0; right: 0; top: 19.6vh; bottom: 20.4vh; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 3.4vh; }
+.us-btns { display: flex; justify-content: center; gap: 2.4vw; flex: none; }
+.us-btns .ui-btn { min-width: 6.5vw; }
+.us-foot { position: fixed; left: 0; right: 0; top: 0; height: 0; }
+.us-hint { position: fixed; display: inline-flex; align-items: center; gap: 0.7vw; font-size: 2.12vh; color: #f2f4f6; cursor: pointer;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); transform: translateY(-50%); top: 84.9vh; white-space: nowrap; }
+.us-h1 { left: 37.5vw; }
+.us-hm { left: 47.6vw; }
+.us-h2 { left: 60.57vw; }
+.us-glyph { font-size: 2.65vh; line-height: 1; font-weight: 700; }
+/* every scroll bar: the Avatar selection's thin grey rail */
+::-webkit-scrollbar { width: 0.36vw; height: 0.36vw; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.08); }
+::-webkit-scrollbar-thumb { background: rgba(170,175,180,0.9); min-height: 3vh; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---------- Users: Information and the icon chooser (IMG_3578-3597) ---------- */
+.form.uinfo, .form.ichoose { display: block; }
+/* the chosen picture's frame (IMG_3606 / IMG_3610): a bright edge with a soft
+   glow that lights up, dims away to nothing for a moment and lights up again;
+   no frame at all while the focus is elsewhere. The square box (folders,
+   preset icons) has a light see-through fill inside the same edge */
+@keyframes icFrame { 0% { opacity: 0; } 14% { opacity: 0.6; } 40% { opacity: 1; } 76% { opacity: 0.22; } 88%, 100% { opacity: 0; } }
+.ui-box, .ic-box { position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; }
+.ui-box::after, .ic-box::after { content: ""; position: absolute; inset: 0; box-sizing: border-box; pointer-events: none; opacity: 0;
+  border: 0.24vh solid rgba(255,255,255,0.95); box-shadow: 0 0 1vh rgba(255,255,255,0.75), inset 0 0 0.8vh rgba(255,255,255,0.45); }
+.ic-box::after { background: rgba(255,255,255,0.16); }
+.ui-box.sel::after, .ic-box.sel::after { animation: icFrame 2.4s ease-in-out infinite; }
+/* (Information: the frame hugs the picture) */
+.ui-box img { display: block; width: auto; height: auto; max-width: 18.3vh; max-height: 18.3vh; }
+.ui-box img.ui-stock { width: 11.4vh; height: 11.4vh; }
+/* (IMG_3578) a system avatar sits in the middle of a square box, as in the
+   icon chooser: the box 19.5vh, the avatar 55 % of it, the box always shown
+   with its light see-through fill and thin edge (the glow on top when chosen) */
+.ui-box.stock { width: 19.5vh; height: 19.5vh; }
+.ui-box.stock img.ui-stock { width: 10.7vh; height: 10.7vh; position: relative; z-index: 1; }
+.ui-box.stock::before { content: ""; position: absolute; inset: 0; box-sizing: border-box; pointer-events: none;
+  background: rgba(255,255,255,0.16); border: 0.12vh solid rgba(255,255,255,0.62); }
+/* (the focus on the name: the square goes away entirely, the avatar stays) */
+.ui-box.stock:not(.sel)::before { display: none; }
+.ui-box { left: 44vw; top: 33.1vh; transform: translate(-50%, -50%); cursor: pointer; }
+.ui-diamond { position: absolute; left: 37.4vw; top: 33.1vh; width: 2.4vh; height: 2.4vh; transform: translate(-50%, -50%);
+  background: url('./assets/icons/system/diamond_indicator.png') left center / auto 100% no-repeat; }
+.ui-namerow { position: absolute; left: 0; right: 0; top: 47.8vh; height: 0; }
+.ui-lab, .ui-name { position: absolute; top: 0; transform: translateY(-50%); font-size: 1.95vh; text-shadow: 0 1px 3px rgba(0,0,0,0.6); white-space: nowrap; }
+.ui-lab { right: 57.1vw; }
+.ui-name { left: 44.5vw; padding: 0.25vh 0.4vw; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.45); border-radius: 0.3vh; cursor: pointer; }
+.ui-name.sel { border: 2px solid rgba(255,255,255,0.92); animation: tfxFill 3.4s ease-in-out infinite; }
+/* the column: the chosen icon in the box, the others small above and below */
+.ichoose { --cx: 34.7vw; --cy: 46.6vh; }
+.ichoose.ic-photo { --cx: 24vw; --cy: 46.3vh; }
+.ic-col { position: fixed; left: var(--cx); top: calc(var(--cy) - 50vh); height: 100vh; width: 0; }
+.ic-box { left: 0; top: 50%; width: 19.5vh; height: 19.5vh; transform: translate(-50%, -50%); cursor: pointer; z-index: 0; }
+.ic-box.pic { visibility: hidden; }
+/* the rows (the chosen one sits in the box): they slide and grow with the
+   XMB's own timing */
+.ic-row { position: absolute; left: 0; width: 0; height: 0; cursor: pointer; z-index: 1;
+  transition: top 0.28s cubic-bezier(.34,1.08,.42,1); }
+.ic-row.noanim, .ic-row.noanim * { transition: none !important; }
+.ic-th { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); width: 5.2vw; height: 5.8vh;
+  display: flex; align-items: center; justify-content: center;
+  transition: width 0.28s cubic-bezier(.34,1.08,.42,1), height 0.28s cubic-bezier(.34,1.08,.42,1); }
+.ic-preset .ic-th { width: 4.5vh; height: 4.5vh; }
+.ic-preset .ic-row.cur.ic-st .ic-th { width: 10.9vh; height: 10.9vh; }
+.ic-row.cur .ic-th { width: 17.5vh; height: 17.5vh; }
+.ic-row.cur.ic-fold .ic-th { width: 15.6vh; height: 15.6vh; }
+.ic-th .ic-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+/* a photo: as big as it fits, in its own shape, so its frame sits on its edges */
+.ic-th .ic-img.ic-pic { width: auto; height: auto; max-width: 100%; max-height: 100%; }
+.ic-col.onlist .ic-row.cur .ic-img.ic-pic { outline: 0.24vh solid rgba(255,255,255,0.95); animation: icFrameO 2.4s ease-in-out infinite; }
+@keyframes icFrameO {
+  0%, 88%, 100% { outline-color: rgba(255,255,255,0); box-shadow: 0 0 1vh rgba(255,255,255,0); }
+  14% { outline-color: rgba(255,255,255,0.55); box-shadow: 0 0 1vh rgba(255,255,255,0.4); }
+  40% { outline-color: rgba(255,255,255,0.95); box-shadow: 0 0 1vh rgba(255,255,255,0.75); }
+  76% { outline-color: rgba(255,255,255,0.2); box-shadow: 0 0 1vh rgba(255,255,255,0.15); }
+}
+/* folders keep the folder's own shape (the picture stays inside it): as tall
+   as the row allows when small, as wide as the box when chosen */
+.ic-th .folder-frame { height: 100% !important; width: auto !important; aspect-ratio: 11.45 / 8.6; }
+.ic-row.cur .ic-th .folder-frame, .ic-opened .ic-th .folder-frame { width: 100% !important; height: auto !important; }
+/* inside a folder (IMG_3610): the opened folder far left with ◀ beside it,
+   the list it came from dimmed in a column of its own */
+.ic-pcol { position: fixed; left: 17.3vw; top: calc(var(--cy) - 50vh); height: 100vh; width: 0; opacity: 0.35; pointer-events: none; }
+.ic-prow { position: absolute; left: 0; width: 0; height: 0; }
+.ic-prow .ic-th { width: 4.2vw; height: 4.6vh; }
+.ic-opened { position: fixed; left: 8.7vw; top: calc(var(--cy) + 0.6vh); width: 0; height: 0; }
+.ic-opened .ic-th { width: 14.5vh; height: 11vh; }
+.ic-back { position: fixed; left: 15vw; top: calc(var(--cy) + 0.6vh); height: 2.2vh; width: auto; transform: translate(-50%, -50%) scaleX(-1); opacity: 0.9; }
+.ic-btns.one { padding-top: 4.2vh; }
+.ic-rtitle { position: absolute; left: 4.7vw; top: 0; transform: translateY(-50%); white-space: nowrap; line-height: 1.05;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.45); opacity: 0.92;
+  transition: left 0.28s cubic-bezier(.34,1.08,.42,1), opacity .28s ease; }
+.ic-rt { font-size: 2.4vh; transition: font-size 0.28s cubic-bezier(.34,1.08,.42,1); }
+.ic-row.cur .ic-rtitle { left: calc(9.75vh + 1.3vw); opacity: 1; }
+.ic-row.cur .ic-rt { font-size: 2.6vh; animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.ic-rsub { font-size: 1.4vh; line-height: 1.2; }
+.plp-empty { position: absolute; left: 46.4vw; top: 47.5vh; transform: translateY(-50%); font-size: 2vh; opacity: 0.85; }
+.ic-text { position: fixed; left: 47.8vw; top: 46.6vh; transform: translateY(-50%); font-size: 1.95vh; text-shadow: 0 1px 3px rgba(0,0,0,0.6); white-space: nowrap; }
+.ic-photo .ic-text { left: 40.7vw; top: 37.8vh; }
+.ic-empty { position: fixed; left: var(--cx); top: calc(var(--cy) + 13vh); transform: translateX(-50%); font-size: 1.9vh; opacity: 0.8; }
+.ic-mode { position: fixed; left: 6.6vw; top: 16vh; transform: translateY(-50%); display: flex; align-items: center; gap: 0.5vw; font-size: 1.95vh;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.ic-mode img { height: 2vh; width: auto; }
+.ic-btns { position: fixed; left: 69vw; top: 77.2vh; display: flex; flex-direction: column; gap: 0.9vh; }
+.ic-photo .ic-btns { left: 65.6vw; top: 73.9vh; }
+.ic-btn { height: 3.3vh !important; font-size: 1.75vh !important; min-width: 12.3vw; padding: 0 0.8vw !important; display: inline-flex; align-items: center; justify-content: center; gap: 0.3vw; }
+.ic-photo .ic-btn { min-width: 15.2vw; }
+.ic-sq { height: 1.6vh; width: auto; }
+.uc-foot .cf-hint { cursor: pointer; }
+/* Automatic Login on: the small arrow under the user's name (IMG_3590) */
+.il-autolog { display: block; margin-top: 0.25vh; }
+/* (the Instant Advance arrow without its shadow, IMG_3603: ~1.25vh tall) */
+.il-autolog img { height: 1.25vh; width: auto; display: block; filter: none; }
+/* the log in / log out questions: ◆ beside the logged-in user's icon */
+.gd-diamond { position: absolute; width: 2.4vh; height: 2.4vh; transform: translate(-100%, -50%); top: 50%;
+  background: url('./assets/icons/system/diamond_indicator.png') left center / auto 100% no-repeat; }
+

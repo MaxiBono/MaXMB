@@ -1,0 +1,134 @@
+/* MaXMB's look, part 3 of 8: the on-screen keyboard. The parts are loaded one after another, in this order
+   (index.html), as one stylesheet. */
+/* ---------- on-screen keyboard (controller text entry) ---------- */
+/* ---- PS3-style on-screen keyboard (built from scratch) ---- */
+/* ---------- on-screen keyboard (Playstation-3-Keyboard capture) ----------
+   Its own layer over whatever is on screen (lightly darkened), always in the
+   middle. --u = one pixel of the 932-px-wide capture. */
+#osk-layer { position: fixed; inset: 0; z-index: 98; display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,0.42); --u: min(calc(59vw / 932), calc(88vh / 537)); }
+#osk-layer.show { display: flex; }
+.osk { position: relative; width: calc(var(--u) * 932); border-radius: calc(var(--u) * 6); overflow: hidden;
+  font-family: var(--ui-font); filter: drop-shadow(0 0 calc(var(--u) * 12) rgba(0,0,0,0.55)); user-select: none; }
+.osk-bar { height: calc(var(--u) * 46); display: flex; align-items: center; gap: calc(var(--u) * 6); padding-left: calc(var(--u) * 9);
+  background: linear-gradient(180deg, #9fa3a5 0%, #92969a 6%, #909596 50%, #8e9294 100%); }
+.osk-pen { height: calc(var(--u) * 32); width: auto; margin-left: calc(var(--u) * -1); }
+/* (a soft shadow under the title, as in the capture) */
+.osk-title { font-size: calc(var(--u) * 23.5); color: #fff; text-shadow: calc(var(--u) * 1) calc(var(--u) * 2) calc(var(--u) * 4) rgba(0,0,0,0.5); }
+.osk-screen { height: calc(var(--u) * 97); box-sizing: border-box; padding: calc(var(--u) * 2.5) calc(var(--u) * 14) calc(var(--u) * 8) calc(var(--u) * 17.5); overflow: hidden;
+  background: linear-gradient(180deg, #50524f 0%, #464646 25%, #3a3a3a 50%, #2e2e2e 75%, #232323 100%);
+  font-size: calc(var(--u) * 20); line-height: calc(var(--u) * 28); color: #fff; white-space: pre-wrap; word-break: break-all; }
+/* the caret (Playstation-3-Keyboard.png, to the pixel at 932 px wide): a
+   green I-beam 32 tall — 2 px serifs 6 wide at the top and bottom, a 2 px
+   light-green stem with a 1 px dark-green edge on each side (and a dark-green
+   shade under / over the serifs) — centred on the point between two letters
+   and taking no room, so the letters never move. It blinks on and off (no
+   fade). The white outlined ◁ (13 x 19) always sits at the end of the text,
+   3.5 px after it (2 px after the I-beam when the caret is at the end). */
+.osk-caret, .osk-end { display: inline-block; position: relative; width: 0; height: calc(var(--u) * 28); vertical-align: top; }
+.osk-caret::before { content: ""; position: absolute; left: calc(var(--u) * -3); top: calc(50% - var(--u) * 16);
+  width: calc(var(--u) * 6); height: calc(var(--u) * 32);
+  background:
+    linear-gradient(90deg, #b7dc82, #c4ef80 40%, #b8dc94) 0 0 / 100% calc(var(--u) * 2) no-repeat,
+    linear-gradient(90deg, #c3ee6a, #b2ff2e 40%, #c0e86a) 0 100% / 100% calc(var(--u) * 2) no-repeat,
+    linear-gradient(90deg, #b4fc66, #aff36e) calc(var(--u) * 2) 0 / calc(var(--u) * 2) 100% no-repeat,
+    linear-gradient(#2e6600, #2e6600) 0 calc(var(--u) * 2) / 100% calc(var(--u) * 1) no-repeat,
+    linear-gradient(#2a5400, #2a5400) 0 calc(100% - var(--u) * 2) / 100% calc(var(--u) * 1) no-repeat,
+    linear-gradient(90deg, #2f6b00 50%, #3c5c16 50%) calc(var(--u) * 1) 0 / calc(var(--u) * 4) 100% no-repeat;
+  animation: oskCaretBlink 1s steps(1, end) infinite; }
+@keyframes oskCaretBlink { 0% { visibility: visible; } 50% { visibility: hidden; } }
+.osk-end::after { content: ""; position: absolute; left: calc(var(--u) * 3.5); top: 50%; width: calc(var(--u) * 13); height: calc(var(--u) * 19);
+  transform: translateY(-50%);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 13 19'%3E%3Cpath d='M1.2 9.5 L12 1 L12 18 Z' fill='none' stroke='white' stroke-width='1.5' stroke-linejoin='miter'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
+.osk-strip { height: calc(var(--u) * 12); background: linear-gradient(180deg, #9a9a9a, #9e9e9e); }
+/* the keys' container darkens toward the bottom (capture: #9b9c9f at the top,
+   #96969a by the fourth row, #6c7278 / #5b6268 under the last one) */
+.osk-board { position: relative; height: calc(var(--u) * 322);
+  background: linear-gradient(180deg, #9b9c9f 0%, #9c9ba1 19%, #9b9b9e 46%, #96969a 61%, #8c8d90 66%, #888787 71%,
+    #7c7c78 81%, #737880 86%, #6c7278 91%, #5b636b 96%, #5f6267 100%); }
+/* the keys: the console's own key pictures (OSK Icons: BUTTON_BASE_*),
+   stretched to each key; white for the letters */
+.osk-k { position: absolute; box-sizing: border-box; cursor: pointer; pointer-events: auto;
+  left: calc(var(--u) * (var(--x) - 3)); top: calc(var(--u) * (var(--y) - 2)); width: calc(var(--u) * (var(--kw) + 6)); height: calc(var(--u) * 54); }
+/* (the console draws the key pictures partly see-through over the grey board:
+   captures: Backspace #9fc5ce, @#: #bfbaa4, a letter #d0d0d0) */
+.osk-k::before { content: ""; position: absolute; inset: 0; background: var(--base) center / 100% 100% no-repeat; opacity: 0.66; pointer-events: none; }
+.osk-k.ch::before { opacity: 0.8; }
+.osk-k > span, .osk-k > img { z-index: 1; }
+.osk-k::after { content: ""; position: absolute; left: calc(var(--u) * 3); right: calc(var(--u) * 3); top: calc(var(--u) * 2); bottom: calc(var(--u) * 1.5);
+  border-radius: calc(var(--u) * 4); pointer-events: none; opacity: 0; z-index: 0; }
+.osk-ch { position: absolute; right: calc(var(--u) * 10); bottom: calc(var(--u) * 7); font-size: calc(var(--u) * 22); line-height: 1; color: #2c2c2c; font-weight: 400;
+  -webkit-text-stroke: 0.014em currentColor; }
+/* the keys' labels are printed on them, as on the console: no shadow (the
+   menus' text shadow made them look bold and black) */
+.osk-k, .osk-k * { text-shadow: none !important; }
+.osk-fl { position: absolute; right: calc(var(--u) * 13); bottom: calc(var(--u) * 7); font-size: calc(var(--u) * 17.5); line-height: 1.1;
+  color: #0d2f55; white-space: nowrap; -webkit-text-stroke: 0.026em currentColor; }
+/* (the a/à, a/A and @/ labels: only a touch bolder, like the letters) */
+.osk-cap, .osk-sym { -webkit-text-stroke: 0.014em currentColor; }
+.osk-smile { height: 0.92em; width: auto; vertical-align: -0.12em; margin-left: calc(var(--u) * 1.5); }
+.osk-k.b-o .osk-fl, .osk-k.b-e .osk-fl { color: #2a2a22; font-size: calc(var(--u) * 17); }
+.osk-sym { position: relative; right: calc(var(--u) * 6); }
+/* the @#: key while its panel is open: lit */
+.osk-k.b-o.on { filter: brightness(1.12) saturate(1.25); }
+.osk-k.b-b_s .osk-fl, .osk-k.b-p .osk-fl:has(.osk-ico) { left: 0; right: 0; text-align: center; bottom: calc(var(--u) * 11); }
+/* the arrows: at the lower right, flattened (▲ ▼ wide and short, ◀ ▶ tall and narrow) */
+.osk-k.b-b_s.rt .osk-fl { left: auto; right: calc(var(--u) * 14); bottom: calc(var(--u) * 9); line-height: 0; }
+.osk-ar { display: block; }
+.osk-ar-v { width: calc(var(--u) * 18); height: calc(var(--u) * 9); }
+.osk-ar-h { width: calc(var(--u) * 10); height: calc(var(--u) * 17); }
+/* the 9 squares: wider than tall */
+.osk-k.b-p .osk-ico svg { width: calc(var(--u) * 29); height: calc(var(--u) * 19); }
+/* copy / paste: the picture at the lower right (capture: 12 px in, 6 px up) */
+.osk-k.cp .osk-fl { left: auto; right: calc(var(--u) * 12); bottom: calc(var(--u) * 6); text-align: right; }
+.osk-ico svg { width: calc(var(--u) * 30); height: calc(var(--u) * 30); display: inline-block; vertical-align: middle; }
+/* Paste: grey while there's nothing to paste, dark blue (like Copy) once something was copied */
+.osk-paste { color: #7f9cab; }
+.osk-paste.can { color: #0d2f55; }
+/* the button label pictures (OSK Icons, 74×28): at the key's top-left as on the console */
+.osk-badge { position: absolute; left: calc(var(--u) * 1.2); top: calc(var(--u) * 1.2); height: calc(var(--u) * 27); width: auto; pointer-events: none; }
+/* the focused key: a bright glowing rim all round, and the whole key glowing
+   too, much more faintly (a soft light over its face), pulsing */
+.osk-k.sel::after { background: radial-gradient(ellipse at 50% 45%, rgba(255,255,255,0.6), rgba(255,255,255,0.36) 70%, rgba(255,255,255,0.26));
+  box-shadow: inset 0 0 0 calc(var(--u) * 2) rgba(255,255,255,0.95), inset 0 0 calc(var(--u) * 8) rgba(255,255,255,0.8),
+    inset 0 0 calc(var(--u) * 22) rgba(255,255,255,0.4), 0 0 calc(var(--u) * 8) rgba(255,255,255,0.85); animation: oskSel 1.7s ease-in-out infinite; }
+@keyframes oskSel { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+/* the @#: panel (IMG_3540 / 3541): grey, over the left of the keys, the
+   symbols 7 to a row (7 rows on show), the focused one on the console's
+   focus square; a thin scroll bar down its right side and, once scrolled,
+   a ▲ over it */
+.osk-symp { position: absolute; left: calc(var(--u) * 78); top: calc(var(--u) * -4); width: calc(var(--u) * 330); height: calc(var(--u) * 318);
+  background: linear-gradient(180deg, #8f9192 0, #9a9c9c calc(var(--u) * 9), #a7a9a8 calc(var(--u) * 11), #a5a7a6 100%);
+  border-radius: calc(var(--u) * 4); z-index: 3;
+  box-shadow: calc(var(--u) * 2) calc(var(--u) * 4) calc(var(--u) * 10) rgba(0,0,0,0.45), inset 0 0 0 calc(var(--u) * 1) rgba(255,255,255,0.18); }
+.osk-symgrid { position: absolute; left: 0; top: calc(var(--u) * 11); width: calc(var(--u) * 318.5); bottom: calc(var(--u) * 6); }
+.osk-sy { position: absolute; left: calc(var(--u) * var(--sx) * 45.5); top: calc(var(--u) * var(--sy) * 43);
+  width: calc(var(--u) * 45.5); height: calc(var(--u) * 43); display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--u) * 21); color: #fff; text-shadow: 0 calc(var(--u) * 1) calc(var(--u) * 1.5) rgba(0,0,0,0.35); cursor: pointer; pointer-events: auto; }
+.osk-sy.sel { background: url('./assets/icons/osk/focus_symbol.png') center / 100% 100% no-repeat; animation: oskSel 1.7s ease-in-out infinite; }
+.osk-symbar { position: absolute; right: calc(var(--u) * 4); top: calc(var(--u) * 12); bottom: calc(var(--u) * 8); width: calc(var(--u) * 6);
+  box-sizing: border-box; border-left: calc(var(--u) * 1) solid rgba(255,255,255,0.4); border-right: calc(var(--u) * 1.5) solid rgba(255,255,255,0.85);
+  background: rgba(0,0,0,0.05); }
+.osk-symthumb { position: absolute; left: 0; right: 0; background: linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.8)); }
+/* (the same ▲ as the settings and option lists use when there's more above) */
+.osk-symup { position: absolute; left: 50%; top: calc(var(--u) * -30); transform: translateX(-50%); height: calc(var(--u) * 12); width: auto; pointer-events: none; }
+.osk-pred { position: absolute; left: calc(var(--u) * 724); top: 0; width: calc(var(--u) * 208); height: calc(var(--u) * 266); pointer-events: none; }
+.osk-predbox { position: absolute; left: 0; top: 0; right: 0; height: calc(var(--u) * 231); background: #6d6f6f;
+  box-shadow: inset 0 calc(var(--u) * 1) 0 rgba(255,255,255,0.12); }
+/* the bar beside the prediction box (capture): a plain flat grey strip from
+   the box's top down to the Prediction bar, a faint light line on its left */
+.osk-scroll { position: absolute; right: calc(var(--u) * 5); top: calc(var(--u) * 3); bottom: 0; width: calc(var(--u) * 11);
+  background: linear-gradient(90deg, #5d5f5f 0, #5d5f5f calc(var(--u) * 1), #8d8f8f calc(var(--u) * 1), #828484 calc(var(--u) * 3), #7a7c7c 55%, #747676 100%); }
+.osk-predbar { position: absolute; left: 0; right: 0; top: calc(var(--u) * 231); height: calc(var(--u) * 35); display: flex; align-items: center;
+  justify-content: space-between; padding: 0 calc(var(--u) * 6) 0 calc(var(--u) * 10); box-sizing: border-box;
+  background: linear-gradient(180deg, #515151 0%, #464646 50%, #3d3d3d 100%); color: #d4e6f3; font-size: calc(var(--u) * 15.5); }
+/* a / 0: two little bold boxes side by side */
+.osk-modes { display: flex; gap: calc(var(--u) * 3); align-self: flex-end; margin-bottom: calc(var(--u) * 2); margin-right: calc(var(--u) * -2); }
+.osk-modes b { min-width: calc(var(--u) * 24); height: calc(var(--u) * 28); line-height: calc(var(--u) * 28); text-align: center; font-size: calc(var(--u) * 19);
+  font-weight: 700; -webkit-text-stroke: 0.04em currentColor; color: #fff; padding: 0 calc(var(--u) * 3); box-sizing: border-box;
+  background: url('./assets/icons/osk/kb_mode_base.png') center / 100% 100% no-repeat; }
+/* (its lower corners slope in a little, as in the capture) */
+.osk-foot { height: calc(var(--u) * 60);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--u) * 12), calc(100% - var(--u) * 5) 100%, calc(var(--u) * 5) 100%, 0 calc(100% - var(--u) * 12));
+  background: linear-gradient(180deg, #2a2a2a 0%, #444444 6%, #3e3e3e 30%, #363636 60%, #383838 72%, #4f4f4f 74%, #555555 100%); }
+

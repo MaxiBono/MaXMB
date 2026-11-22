@@ -86,7 +86,6 @@ export const SLIDESHOW_LINKS = merge(
 
 // Video Player: the top row sits between the middle row's icons, so most icons
 // have two choices (left / right) up or down
-const VP_TOP = ["scene", "goto", "audio", "subs", "vol", "av", "screen", "icon", "del", "display"];
 const VP_MID = ["begin", "next", "frev", "ffwd", "play", "pause", "stop", "ireplay", "iadv", "slowrev", "slowfwd", "framerev", "frameadv"];
 export const VIDEO_LINKS = merge(
   down({ scene: ["begin", "next", "frev"], goto: ["ffwd"], audio: ["ffwd", "play"], subs: ["play", "pause"],

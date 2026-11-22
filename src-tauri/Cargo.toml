@@ -1,6 +1,6 @@
 [package]
 name = "ps3xmb"
-version = "1.1.4"
+version = "2.0.0"
 description = "MaXMB"
 authors = ["Maxi"]
 edition = "2021"
@@ -35,7 +35,9 @@ zip = { version = "2", default-features = false, features = ["deflate-miniz"] }
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 
 [profile.release]
-panic = "abort"
+# (a part of the system failing -- the pop-up, a sync, a download -- ends only that part, written
+# to the log; MaXMB stays open)
+panic = "unwind"
 codegen-units = 1
 lto = true
 opt-level = "s"

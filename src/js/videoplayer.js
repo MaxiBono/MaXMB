@@ -12,7 +12,7 @@
 // (video.rs), so MKV, AVI, WMV, MPEG, TS, FLV… work when ffmpeg is present.
 
 import { playerIcon } from "./themes.js";
-import { call, noExt } from "./api.js";
+import { call, noExt, logLine } from "./api.js";
 import { ListPicker, volMarkup, volGain, VOL_STEPS } from "./ui.js";
 import { fitMedia } from "./fit.js";
 import { PadNav, VIDEO_LINKS, nodeX } from "./padnav.js";
@@ -160,7 +160,7 @@ export class VideoPlayer {
   async _load() {
     const it = this.item;
     this._normalSpeed(false);
-    this._prepared = 0; this._converting = false; this.info = null;
+    this._prepared = 0; this._converting = false; this.info = null; this._from = "file"; this._planMode = "";
     this._rates = null; this._rateLast = null;
     this._subActive = "off";
     this._resetThumbs();
@@ -174,7 +174,8 @@ export class VideoPlayer {
     let plan = null;
     try { plan = await call("video_plan", { path: it.path }); } catch (e) {}
     if (this._closed || this.item !== it) return;
-    if (plan && plan.cached) { this._prepared = 1; this.video.src = this.resolve({ path: plan.cached }); this.video.play().catch(() => {}); }
+    this._planMode = (plan && plan.mode) || "";
+    if (plan && plan.cached) { this._prepared = 1; this._from = "saved"; this.video.src = this.resolve({ path: plan.cached }); this.video.play().catch(() => {}); }
     else if (plan && plan.mode && plan.mode !== "direct") this._prepare(plan.mode === "convert");
     else if (!plan && REMUX_FIRST.test(it.path || "")) this._prepare(false);
     else { this.video.src = this.resolve(it); this.video.play().catch(() => {}); }
@@ -185,11 +186,25 @@ export class VideoPlayer {
     } catch (e) {}
   }
   // the webview couldn't play it: remux with ffmpeg, then (if that still
-  // fails) convert the picture as well
+  // fails) convert the picture as well.
+  // A playable copy that won't play (made now, or saved from before): deleted, so it's never
+  // played again in place of a good one -- a saved one is then made again. Why the webview
+  // wouldn't play it goes in MaXMB.log.
   _onError() {
     if (this._closed || this._converting) return;
-    if (this._prepared < 2) this._prepare(this._prepared === 1);
-    else { this._note("This video can't be played."); this.sfx.play("error", 0.4); }
+    const it = this.item, e = this.video.error;
+    const why = e ? `code ${e.code}${e.message ? `: ${e.message}` : ""}` : "no reason given";
+    const from = this._from;
+    logLine("warn", `video: ${noExt(it.name || it.title || "")} wouldn't play from ${from === "file" ? "its file" : from === "saved" ? "its saved playable copy" : "its playable copy"} (${why})`);
+    const next = () => {
+      if (this._closed || this.item !== it) return;
+      if (from === "saved") this._prepare(this._planMode === "convert");
+      else if (this._prepared < 2) this._prepare(this._prepared === 1);
+      else { this._note("This video can't be played."); this.sfx.play("error", 0.4); }
+    };
+    if (from === "file") { next(); return; }
+    this._converting = true;
+    call("video_drop_copy", { path: it.path, why }).catch(() => {}).then(() => { this._converting = false; next(); });
   }
   async _prepare(full) {
     const it = this.item;
@@ -198,7 +213,7 @@ export class VideoPlayer {
     try {
       const out = await call("video_prepare", { path: it.path, full });
       if (this._closed || this.item !== it) return;
-      this._converting = false; this._note("");
+      this._converting = false; this._note(""); this._from = "made";
       this._resetThumbs();
       this.video.src = this.resolve({ path: out });
       this.video.play().catch(() => {});
@@ -800,16 +815,5 @@ export class VideoPlayer {
     // panel closed: the D-pad's left / right are Fast Reverse / Forward
     if (a === "left") { this.sfx.play("enter", 0.4); this._actId("frev"); }
     else if (a === "right") { this.sfx.play("enter", 0.4); this._actId("ffwd"); }
-  }
-  // moving between rows keeps the cursor over the nearest icon
-  _nearest(r) {
-    const cur = this._nodes.find((n) => +n.dataset.r === this.fr && +n.dataset.c === this.fc) ||
-      this._nodes.find((n) => n.classList.contains("sel"));
-    const x = cur ? cur.getBoundingClientRect().left + cur.offsetWidth / 2 : 0;
-    let best = 0, bd = Infinity;
-    this._nodes.filter((n) => +n.dataset.r === r).forEach((n) => {
-      const d = Math.abs(n.getBoundingClientRect().left + n.offsetWidth / 2 - x); if (d < bd) { bd = d; best = +n.dataset.c; }
-    });
-    return best;
   }
 }

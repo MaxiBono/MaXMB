@@ -184,6 +184,16 @@ fn webview_state() -> String {
     { String::from("page processes unknown") }
 }
 
+/// The game started last (its folder in content\Games), for the window made anew after it.
+static LAST_GAME: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+pub fn set_last_game(folder: &str) { *LAST_GAME.lock().unwrap_or_else(|e| e.into_inner()) = Some(folder.to_string()); }
+/// The window made anew after a game: who was signed in and the game played, for its page to
+/// come back as from any game (main.js boot): no startup sound or intro, no user selection,
+/// on the Game column with that game chosen. Told once.
+static RESUME: std::sync::Mutex<Option<serde_json::Value>> = std::sync::Mutex::new(None);
+#[tauri::command]
+pub fn resume_after_game() -> Option<serde_json::Value> { RESUME.lock().unwrap_or_else(|e| e.into_inner()).take() }
+
 /// When the game started (clock time, ms), for `crash_reports`.
 static GAME_WALL: AtomicU64 = AtomicU64::new(0);
 static REMAKING: AtomicBool = AtomicBool::new(false);
@@ -197,7 +207,16 @@ pub fn remaking() -> bool { REMAKING.load(Ordering::SeqCst) }
 /// window's), as Tauri asks for making windows.
 fn remake_window(app: &AppHandle) {
     REMAKING.store(true, Ordering::SeqCst);
+    // (the trophy pop-up's window too: its page ran in the WebView2 that stopped. Left open, a
+    // window whose WebView2 was gone stayed in the app beside the new one -- the likeliest cause
+    // of the app closing by itself a few minutes later, Windows finding its memory damaged)
+    crate::trophypop::close_window(app);
     if let Some(w) = app.get_webview_window("main") { let _ = w.destroy(); }
+    {
+        let user = crate::users::load(&crate::paths::users_file(app)).active;
+        let game = LAST_GAME.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        *RESUME.lock().unwrap_or_else(|e| e.into_inner()) = user.map(|u| serde_json::json!({ "user": u, "game": game }));
+    }
     std::thread::sleep(std::time::Duration::from_millis(700));
     #[cfg(windows)]
     win::end_webview_processes();
@@ -950,15 +969,12 @@ mod win {
         fn TerminateProcess(h: HANDLE, code: u32) -> BOOL;
         fn GetExitCodeProcess(h: HANDLE, code: *mut u32) -> BOOL;
         fn GetProcessTimes(h: HANDLE, creation: *mut u32, exit: *mut u32, kernel: *mut u32, user: *mut u32) -> BOOL;
-        fn WaitForSingleObject(h: HANDLE, ms: u32) -> u32;
         fn QueryFullProcessImageNameW(h: HANDLE, flags: u32, buf: *mut u16, len: *mut u32) -> BOOL;
         fn CreateToolhelp32Snapshot(flags: u32, pid: u32) -> HANDLE;
         fn Process32FirstW(snap: HANDLE, e: *mut PROCESSENTRY32W) -> BOOL;
         fn Process32NextW(snap: HANDLE, e: *mut PROCESSENTRY32W) -> BOOL;
     }
-    const SYNCHRONIZE: u32 = 0x0010_0000;
     const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
-    const WAIT_TIMEOUT: u32 = 0x102;
     const TH32CS_SNAPPROCESS: u32 = 0x2;
     const VK_MENU: u8 = 0x12;
     const KEYEVENTF_KEYUP: u32 = 0x2;
@@ -1023,16 +1039,6 @@ mod win {
         (p != 0).then_some(p)
     }
 
-    #[allow(dead_code)]
-    pub fn alive(pid: u32) -> bool {
-        unsafe {
-            let h = OpenProcess(SYNCHRONIZE, 0, pid);
-            if h == 0 { return false; }
-            let r = WaitForSingleObject(h, 0);
-            CloseHandle(h);
-            r == WAIT_TIMEOUT
-        }
-    }
 
     fn image_path(pid: u32) -> Option<String> {
         unsafe {
@@ -1171,26 +1177,4 @@ mod win {
         out
     }
 
-    #[allow(dead_code)]
-    pub fn any_running_from(dir: &Path) -> bool {
-        let want = dir.display().to_string().to_lowercase();
-        unsafe {
-            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-            if snap == -1 || snap == 0 { return false; }
-            let mut e: PROCESSENTRY32W = std::mem::zeroed();
-            e.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-            let mut found = false;
-            let mut ok = Process32FirstW(snap, &mut e) != 0;
-            while ok {
-                if e.th32ProcessID != 0 && e.th32ProcessID != std::process::id() {
-                    if let Some(p) = image_path(e.th32ProcessID) {
-                        if p.to_lowercase().starts_with(&want) { found = true; break; }
-                    }
-                }
-                ok = Process32NextW(snap, &mut e) != 0;
-            }
-            CloseHandle(snap);
-            found
-        }
-    }
 }

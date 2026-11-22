@@ -2,7 +2,7 @@
 // is chosen). Routes keyboard / mouse / gamepad input to the XMB, and keeps the
 // top-right info box in sync with the signed-in PSN account.
 
-import { call, Input, listen, assetUrl } from "./api.js";
+import { call, Input, listen, assetUrl, bumpAsset, logLine } from "./api.js";
 import { Keybinds } from "./keybinds.js";
 import { AudioManager } from "./audio.js";
 import { WaveBackground } from "./wave.js";
@@ -33,10 +33,10 @@ const waveGuard = {
   },
 };
 // (it starts with the Wave Style last chosen here: xmb.js keeps it in settings.graphics.waveStyle)
-const wave = new WaveBackground(document.getElementById("wave"), { guard: waveGuard, style: settings.graphics?.waveStyle });
-// The intro and the log-in / user-select screen (before any profile's own theme
-// loads) use the default wave settings, so they match what a freshly-created
-// user gets.
+// (Keep Personalization Options when Booting Off: the original look until someone signs in)
+const keepLook = settings.behavior?.keepBootLook !== false;
+const wave = new WaveBackground(document.getElementById("wave"), { guard: waveGuard, style: keepLook ? (settings.bootLook?.waveEngine || settings.graphics?.waveStyle) : undefined });
+// (the rest of the look before anyone signs in: xmb.js start, _bootLookApply)
 wave.resetWaveParams();
 const infobox = new InfoBox(document.getElementById("infobox"));
 
@@ -58,6 +58,11 @@ infobox.setDateFormat(settings.behavior?.dateFormat || "DD/MM/YYYY");
 // once the friend list is generated: it's the number of Online/AFK friends -
 // so here we only set the avatar (and clear the count on sign-out).
 async function updateInfobox(user) {
+  // (logging in: the box grows, then its profile slots fade in -- styles.css body.ib-grow)
+  if (user && document.body.classList.contains("no-user")) {
+    document.body.classList.add("ib-grow"); clearTimeout(updateInfobox._t);
+    updateInfobox._t = setTimeout(() => document.body.classList.remove("ib-grow"), 900);
+  }
   document.body.classList.toggle("no-user", !user);
   setCursorLock(!user);
   if (user && user.psnAccountId) {
@@ -85,6 +90,8 @@ xmb.setContext(settings, appInfo);
 // Dev/debug hooks (harmless in production): let headless tests and the console
 // reach the live XMB + wave instances.
 window.__xmb = xmb; window.__wave = wave; window.__manifest = manifest;
+// (a held Up / Down in a media list goes at the console's pace: holdPace)
+window.__xmbListHold = () => { try { return !xmb.overlay && !xmb.locked && xmb._smoothList(xmb._level()); } catch (e) { return false; } };
 
 // scroll any title that's too long to show in full (applies app-wide)
 startMarquees();
@@ -115,6 +122,11 @@ document.addEventListener("visibilitychange", () => xmb.setLowPower(document.hid
 // art found online for newly recognized games (in the background): the Game
 // column shows it once the downloads settle
 { let t = 0; window.__TAURI__?.event?.listen?.("games-updated", () => { clearTimeout(t); t = setTimeout(() => xmb._refreshGameColumn(), 1500); }); }
+// Steam's pictures put in by Game Recognition (in place of files of the same
+// name): those games' pictures read again, not the ones the page still holds
+window.__TAURI__?.event?.listen?.("game-art-changed", (e) => {
+  for (const f of (e && e.payload) || []) { const g = xmb._gameByFolder(f); if (g) for (const k of ["icon", "background", "preview", "trophy"]) bumpAsset(g[k]); }
+});
 
 // The app's own icons and pictures are all loaded while the intro plays (after
 // its sound is ready, so the sound isn't held up): every menu then shows its
@@ -190,7 +202,16 @@ for (const t of ["mousedown", "mouseup", "click", "dblclick", "wheel", "contextm
   window.addEventListener(t, (e) => { if (cursorLocked()) { e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault(); } }, { capture: true, passive: false });
 }
 setCursorLock(true);
-window.addEventListener("mousemove", showCursor, { passive: true });
+// (only a mouse that really moved: Chromium also sends a "mousemove" when what's under a still
+// pointer changes -- the on-screen keyboard opening under it, a menu drawn again -- which showed
+// the cursor for a moment over it. The pointer's place on the screen, not in the window, so going
+// in or out of full screen, which moves the window under a still mouse, isn't taken for a move.)
+let _mx = null, _my = null;
+window.addEventListener("mousemove", (e) => {
+  const moved = !!(e.movementX || e.movementY) || (_mx !== null && (e.screenX !== _mx || e.screenY !== _my));
+  _mx = e.screenX; _my = e.screenY;
+  if (moved) showCursor();
+}, { passive: true });
 window.addEventListener("mousedown", showCursor, { passive: true });
 
 // Keyboard / mouse bindings (Settings > System Settings > Change Keybinds).
@@ -253,6 +274,10 @@ function bindAction(a, e) {
 // 30 a second, or much slower on some keyboards) and its unevenness, cut down
 // to the controller's pace, made the long lists scroll in bursts.
 const DIR_ACTIONS = ["up", "down", "left", "right", "ls_up", "ls_down", "ls_left", "ls_right"];
+// The pace of a held direction: [first repeat after, then one every] ms. Up / Down in the media
+// lists (xmb.js _smoothList) go at the console's own pace, measured on its capture frame by
+// frame: the first repeat 300 ms after the press, then a row every 66.7 ms (15 a second).
+const holdPace = (a) => ((a === "up" || a === "down" || a === "ls_up" || a === "ls_down") && window.__xmbListHold && window.__xmbListHold() ? [300, 1000 / 15] : [380, 130]);
 const kbRep = { code: null, a: null, next: 0, raf: 0 };
 function kbRepStop() { if (kbRep.raf) cancelAnimationFrame(kbRep.raf); kbRep.code = kbRep.a = null; kbRep.raf = 0; }
 function kbRepTick() {
@@ -260,7 +285,8 @@ function kbRepTick() {
   if (!kbRep.code) return;
   const now = performance.now();
   if (now >= kbRep.next) {
-    kbRep.next = now + 130;
+    // (on its own clock, not from this frame: the pace doesn't drift with the frames' length)
+    const every = holdPace(kbRep.a)[1]; kbRep.next = Math.max(kbRep.next + every, now - every);
     // (as before: the Music Player doesn't take a held key's repeats)
     if (!document.getElementById("musicplayer")?.classList.contains("show") && !Keybinds.capture) {
       window.__inputRepeat = true; Input.lastKind = "keyboard";
@@ -292,7 +318,7 @@ window.addEventListener("keydown", (e) => {
     const a = Keybinds.actionFor(e.code);
     if (DIR_ACTIONS.includes(a)) {
       if (rep) { e.preventDefault(); return; }
-      kbRepStop(); kbRep.code = e.code; kbRep.a = a; kbRep.next = performance.now() + 380;
+      kbRepStop(); kbRep.code = e.code; kbRep.a = a; kbRep.next = performance.now() + holdPace(a)[0];
       kbRep.raf = requestAnimationFrame(kbRepTick);
     }
   }
@@ -553,8 +579,8 @@ function readGamepad() {
     for (const k of ["up", "down", "left", "right"]) Input.held[k] = dir === k || !!kbHeld[k];
     const tnow = performance.now();
     if (dir) {
-      if (dir !== gp.dir) { gp.dir = dir; window.__inputRepeat = false; gpd(dir); gp.dirNext = tnow + 380; }   // initial delay
-      else if (tnow >= gp.dirNext) { window.__inputRepeat = true; gpd(dir); window.__inputRepeat = false; gp.dirNext = tnow + 130; }        // repeat rate
+      if (dir !== gp.dir) { gp.dir = dir; window.__inputRepeat = false; gpd(dir); gp.dirNext = tnow + holdPace(dir)[0]; }   // initial delay
+      else if (tnow >= gp.dirNext) { const every = holdPace(dir)[1]; window.__inputRepeat = true; gpd(dir); window.__inputRepeat = false; gp.dirNext = Math.max(gp.dirNext + every, tnow - every); }        // repeat rate
     } else { gp.dir = null; gp.dirNext = 0; }
     // Change Keybinds: SELECT + R2 restores the default keys
     if (Keybinds.resetHook) {
@@ -631,7 +657,12 @@ async function boot() {
   // and no Automatic Login
   let loggedOut = false;
   try { loggedOut = sessionStorage.getItem("xmbLogOut") === "1"; sessionStorage.removeItem("xmbLogOut"); } catch (e) {}
-  const introOn = !loggedOut && settings.behavior?.bootAnimation !== false;
+  // (the window made anew after a game -- Windows ended its page meanwhile --: back as from any
+  // game, with no startup sound or intro, the same user signed in on the game played; focus.rs)
+  let resume = null;
+  try { resume = await call("resume_after_game"); } catch (e) {}
+  if (resume) logLine("info", "the window made anew after the game: back on the game, with no startup");
+  const introOn = !loggedOut && !resume && settings.behavior?.bootAnimation !== false;
   const t0 = performance.now();
   // Console Startup Sound (System Settings, On by default): the screen stays
   // black with the sound playing while the first menu is made (at least 3 s);
@@ -643,7 +674,7 @@ async function boot() {
   audio.bufVol = Math.max(0, Math.min(1, (settings.behavior?.bufferingVolume ?? 15) / 100));   // (decides how the startup sound ends)
   // (with the intro off, the startup sound still plays: the same black screen
   // and the same drop, and the menu comes in the moment the intro would)
-  if (!loggedOut && settings.behavior?.startupSound !== false) {
+  if (!loggedOut && !resume && settings.behavior?.startupSound !== false) {
     su = await Promise.race([audio.startupSound(0.85), new Promise((r) => setTimeout(() => r(null), 2500))]);
     // (still loading after 2.5 s, as on a first start: it's left out this time;
     // started late it would play on at full volume with nothing to end it)
@@ -655,7 +686,7 @@ async function boot() {
   audio.hold = true;
   try {
     await Promise.race([appIconsReady, new Promise((r) => setTimeout(r, 4000))]);
-    await xmb.start(manifest, { noAutoLogin: loggedOut });
+    await xmb.start(manifest, { noAutoLogin: loggedOut, resume });
   } catch (e) { console.error(e); }
   if (su) {
     // (at least 3 s of the sound alone; this part can't be skipped)
@@ -669,8 +700,8 @@ async function boot() {
   await playIntro(audio, {
     enabled: introOn,
     bootSound: settings.behavior?.bootSound || "coldboot",
-    icon: settings.behavior?.introIcon ? assetUrl(settings.behavior.introIcon) : null,
-    title: settings.behavior?.introTitle ? assetUrl(settings.behavior.introTitle) : null,
+    icon: keepLook && settings.behavior?.introIcon ? assetUrl(settings.behavior.introIcon) : null,
+    title: keepLook && settings.behavior?.introTitle ? assetUrl(settings.behavior.introTitle) : null,
     onSound: (sec) => su && su.fadeOutIn(sec, 3),
     // skipped: the startup sound lowers quickly to nothing (to 15 % with the
     // Buffering Sound on, and carries on as its loop)

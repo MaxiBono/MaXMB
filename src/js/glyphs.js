@@ -11,7 +11,7 @@ const RE_G = /[✕○□△]/g;
 // a span that is just the symbol (the footers' hints)
 const GLYPH_EL = ".cf-glyph, .us-glyph, .ps-glyph, .af-g";
 // text that may name a button somewhere in it
-const TEXT_IN = ".d-sub:not(.il-usub), .d-desc, .pc-hint, .kb-mouse, .kb-pad, .shot-toast, .gi2-foot, .vp-dlg-foot, .pv-crop-foot";
+const TEXT_IN = ".d-sub:not(.il-usub), .d-desc, .pc-hint, .kb-mouse, .kb-pad, .shot-toast, .tpop-text, .tinfo-foot, .gi2-foot, .vp-dlg-foot, .pv-crop-foot";
 const SKIP = "input, textarea, [contenteditable], #osk-layer";
 
 function glyphEl(el) {

@@ -75,7 +75,7 @@ export class GlassLayer {
     this.ok = false; this.on = false; this.body = BODY;
     this.els = document.getElementsByClassName("lg-live");
     this.shades = new Map();   // url -> { tex, used }
-    this.maps = new Map();     // map id -> tex
+    this.maps = new Map();     // map id -> { tex, used }
     this._frame = 0; this._sig = "";
     this._loop = this._loop.bind(this);
     try { this._init(); this.ok = true; } catch (e) { console.warn("glass layer unavailable:", e && e.message); this.ok = false; }
@@ -353,13 +353,13 @@ void main() { vec4 c = texture(uT, vT) * uCol; o = vec4(c.rgb, c.a * uA); }`;
     if (window.__onWaveFrame) window.__onWaveFrame = null;
     for (const el of [...document.querySelectorAll(".lg-on, .lg-live")]) this.detach(el);
     this._freeBackdrop();
-    if (this.ok) { const gl = this.gl; for (const v of this.shades.values()) gl.deleteTexture(v.tex); for (const t of this.maps.values()) gl.deleteTexture(t); }
+    if (this.ok) { const gl = this.gl; for (const v of this.shades.values()) gl.deleteTexture(v.tex); for (const v of this.maps.values()) gl.deleteTexture(v.tex); }
     this.shades.clear(); this.maps.clear(); this._sig = "";
   }
   // the icons' glass shapes were made again (Delete Icon Shading / All Cache):
   // the old ones let go
   forgetMaps() {
-    if (this.ok) for (const t of this.maps.values()) this.gl.deleteTexture(t);
+    if (this.ok) for (const v of this.maps.values()) this.gl.deleteTexture(v.tex);
     this.maps.clear(); this._sig = "";
   }
   // an icon to draw: key (its picture's name), map (iconshade glassMap), url (its glass image)
@@ -419,12 +419,12 @@ void main() { vec4 c = texture(uT, vT) * uCol; o = vec4(c.rgb, c.a * uA); }`;
     return tex;
   }
   _mapTex(map) {
-    let t = this.maps.get(map.id);
-    if (t) return t;
-    const gl = this.gl; t = this._tex();
+    const v = this.maps.get(map.id);
+    if (v) { v.used = this._frame; return v.tex; }
+    const gl = this.gl, t = this._tex();
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, map.w, map.h, 0, gl.RGBA, gl.UNSIGNED_BYTE, map.data);
-    this.maps.set(map.id, t);
+    this.maps.set(map.id, { tex: t, used: this._frame });
     return t;
   }
   // the shared canvas's size for w x h of tiles: grown at once (in steps of
@@ -519,7 +519,9 @@ void main() { vec4 c = texture(uT, vT) * uCol; o = vec4(c.rgb, c.a * uA); }`;
       if (!el.classList.contains("lg-on")) el.classList.add("lg-on");
     }
     // pictures no longer shown for a while: let go
-    if (this._frame % 600 === 0) for (const [k, v] of this.shades) if (this._frame - v.used > 600) { gl.deleteTexture(v.tex); this.shades.delete(k); }
+    // (and so are the icons' glass shapes: a new PS3 theme's icons each have their own,
+    // so changing themes all day with a Reactive style kept adding to the graphics memory)
+    if (this._frame % 600 === 0) for (const m of [this.shades, this.maps]) for (const [k, v] of m) if (this._frame - v.used > 600) { gl.deleteTexture(v.tex); m.delete(k); }
   }
 }
 

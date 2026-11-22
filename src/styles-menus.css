@@ -1,0 +1,300 @@
+/* MaXMB's look, part 2 of 8: the side menus, field entry, the avatar selection and the media players' basics. The parts are loaded one after another, in this order
+   (index.html), as one stylesheet. */
+/* ---------- right-side menus / info (flat, transparent, straight) ---------- */
+.sidemenu { position: fixed; top: 0; right: 0; height: 100%; width: 30vw; min-width: 300px; z-index: 60;
+  display: none; flex-direction: column; justify-content: center; gap: 2px; padding: 0 40px 0 34px;
+  /* a bright shining edge on the LEFT, then the dark shading panel fading in
+     toward the right (the shadow): like the real XMB options menu. */
+  background:
+    linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.55) 0.9%, rgba(255,255,255,0.18) 3%, rgba(255,255,255,0) 8%),
+    linear-gradient(90deg, rgba(var(--menu-rgb, 8,10,16),0) 0%, rgba(var(--menu-rgb, 8,10,16),0.42) 26%, rgba(var(--menu-rgb, 8,10,16),0.74) 62%, rgba(var(--menu-rgb, 8,10,16),0.9) 100%); }
+.sidemenu.show { display: flex; }
+/* the small line near the top, separating the header from the options */
+.sidemenu.show::before { content: ""; position: absolute; top: 78px; left: 34px; right: 40px; height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.05), rgba(255,255,255,0.55)); }
+/* selected option glows like the icons (same slow breathing bloom) */
+.sidemenu.info { justify-content: center; }
+.gi-title { font-size: 30px; font-weight: 600; margin-bottom: 14px; }
+.gi-desc { font-size: 16px; line-height: 1.5; opacity: 0.85; margin-bottom: 18px; }
+.gi-dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; font-size: 16px; }
+.gi-dl dt { opacity: 0.6; }
+
+/* ---------- minimal field entry (flat): clean, blurred wave behind only ---------- */
+.form { position: fixed; inset: 0; z-index: 70; display: none; align-items: center; justify-content: center;
+  background: rgba(10,12,20,0.18); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.form.show { display: flex; }
+/* header + footer white rules, matching the real XMB full-screen menus
+   (measured at ~18.5vh and ~81.5vh on a 1920x1080 sign-in screen). */
+.form.show::before, .form.show::after {
+  content: ""; position: fixed; left: 0; right: 0; height: 1.5px;
+  background: rgba(255,255,255,0.85); z-index: 71; pointer-events: none;
+}
+.form.show::before { top: 18.5vh; }
+.form.show::after { top: 81.5vh; }
+/* post-login loading screen: same backdrop + top/bottom rules as the Turn Off
+   System menu, but with only those two lines and a big spinning loading icon
+   in the middle. Shown only while the signed-in profile is still loading. */
+.loading { position: fixed; inset: 0; z-index: 69; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 3vh;
+  background: rgba(10,12,20,0.18); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.loading.show { display: flex; }
+.loading::before, .loading::after {
+  content: ""; position: fixed; left: 0; right: 0; height: 1.5px;
+  background: rgba(255,255,255,0.85); z-index: 71; pointer-events: none;
+}
+.loading::before { top: 18.5vh; }
+.loading::after { top: 81.5vh; }
+.loading-spin { width: 10vh; height: 10vh; object-fit: contain;
+  filter: drop-shadow(0 0.2vh 0.6vh rgba(0,0,0,0.5)); animation: xmbSpin 0.9s linear infinite; }
+/* The avatar selector / photo grid draw their own panel: no header/footer rules. */
+.form.avpick::before, .form.avpick::after { display: none; }
+/* Turn-off style confirm: centred title, horizontal options (selected glows),
+   and an X Enter / O Back footer at the bottom. */
+.confirm { text-align: center; }
+.confirm-title { font-size: 2.13vh; font-weight: 400; line-height: 3vh; margin-bottom: 4.1vh; white-space: pre-line; text-shadow: 0 1px 8px rgba(0,0,0,0.5); }
+.confirm-opts { display: flex; justify-content: center; gap: 6.25vw; }
+.confirm-opt { font-family: var(--ui-font); font-size: 2.3vh; line-height: 3vh; color: var(--text); background: none; border: none;
+  cursor: pointer; opacity: 0.75; padding: 0; transition: opacity .2s ease; }
+.confirm-opt.sel { opacity: 1; animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+/* Turn Off capture: plain ✕ / ○ glyphs just under the lower rule (y 907),
+   the two hints 340 px apart */
+.confirm-foot { position: fixed; left: 0; right: 0; top: 82.9vh; display: flex; justify-content: center; gap: 16.6vw; padding-left: 2.3vw; z-index: 72; }
+.cf-hint { display: inline-flex; align-items: center; gap: 0.75vw; font-size: 2.25vh; color: var(--text);
+  text-shadow: 0 0.15vh 0.4vh rgba(0,0,0,0.5); }
+.cf-glyph { display: inline-flex; align-items: center; justify-content: center; font-size: 2.6vh; line-height: 1; }
+/* ---- Avatar selection, laid out from the PSN "Avatar" capture (1920x1080):
+   title at x 350 / y 102; slate panel x 352-1568, y 134-845; current avatar
+   144 px at x 384 / y 163, arrow at x 575, "Select an avatar." (cyan) at x 815,
+   an "All" drop-down x 818-1538 / y 240-285; light-cyan rules at y 323 and
+   y 755; 143 px cells on a 186 px pitch from x 424 / y 375 (2 rows, scroll
+   rail on the left at x 375); Cancel (bright blue) / Confirm buttons 219x44 at
+   y 781; a faint reflection under the panel and a ○ Back / ✕ Enter footer. */
+.form.avpick { background: rgba(0,6,14,0.22); display: none; }
+.form.avpick.show { display: block; }
+.avpick-title { position: absolute; left: 18.2vw; top: 7.6vh; font-size: 3.3vh; line-height: 4vh;
+  color: #f2f2f2; text-shadow: 0 0.25vh 0.6vh rgba(0,0,0,0.6); }
+/* panel (avatar capture 742ae15c): a dark, see-through near-black slab with
+   blue glows in its top-left and bottom-right corners, a thin cool-grey edge */
+.avpick-panel { position: absolute; left: 18.33vw; top: 12.4vh; width: 63.33vw; height: 65.83vh; box-sizing: border-box;
+  border-radius: 0.6vh; border: 1px solid rgba(140,170,200,0.45);
+  background:
+    radial-gradient(ellipse 34% 30% at 0% 0%, rgba(40,95,160,0.62) 0%, rgba(30,70,125,0.28) 55%, rgba(20,40,80,0) 100%),
+    radial-gradient(ellipse 34% 32% at 100% 100%, rgba(20,80,150,0.55) 0%, rgba(15,55,105,0.25) 55%, rgba(10,30,60,0) 100%),
+    rgba(2,4,8,0.72);
+  box-shadow: 0 0.6vh 2.4vh rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08); }
+.avpick-head { position: absolute; left: 0; right: 0; top: 0; height: 17.4vh; }
+.avpick-current { position: absolute; left: 1.67vw; top: 2.68vh; width: 13.33vh; height: 13.33vh; overflow: hidden; }
+.avpick-current img, .avpick-current video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avpick-arrow { position: absolute; left: 10.9vw; top: 8.6vh; height: 2.6vh; width: auto; object-fit: contain; opacity: 0.85; }
+.avpick-preview { position: absolute; left: 13.3vw; top: 2.68vh; width: 13.33vh; height: 13.33vh; overflow: hidden; }
+.avpick-preview img, .avpick-preview video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.avpick-hint { position: absolute; left: 24.1vw; top: 4.8vh; color: #67cef1; font-size: 3.15vh; line-height: 4vh; }
+.avpick-dd { position: absolute; left: 24.27vw; top: 9.8vh; width: 37.5vw; height: 4.17vh; box-sizing: border-box;
+  border: 2px solid rgba(200,206,212,0.9); border-radius: 0.6vh; background: rgba(0,0,0,0.25);
+  display: flex; align-items: center; padding: 0 0.4vw; font-size: 2.9vh; color: #f4f4f4; }
+.avpick-dd-chev { position: absolute; right: 0.9vw; top: 50%; width: 2.5vh; height: 2.5vh; transform: translateY(-50%);
+  border-radius: 50%; background: #f4f6f8; }
+.avpick-dd-chev::after { content: ""; position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%);
+  border-left: 0.55vh solid transparent; border-right: 0.55vh solid transparent; border-top: 0.8vh solid #2030a0; }
+.avpick-rule { position: absolute; left: 1.04vw; right: 1.04vw; height: 2px; background: rgba(120,175,215,0.85); }
+.avpick-rule.r1 { top: 17.4vh; }
+.avpick-rule.r2 { top: 57.5vh; }
+/* the scroll viewport: exactly 2 rows; scrollbar forced to the LEFT via rtl */
+.avpick-scroll { position: absolute; left: 1.09vw; top: 19.1vh; width: 59.5vw; height: 37.5vh; direction: rtl;
+  overflow-y: auto; overflow-x: hidden; }
+.avpick-grid { direction: ltr; display: grid; grid-template-columns: repeat(6, 13.24vh); column-gap: 2.24vw; row-gap: 3.98vh;
+  padding: 3.2vh 0 3.2vh 2.55vw; }
+.avpick-cell { position: relative; width: 13.24vh; height: 13.24vh; cursor: pointer; box-sizing: border-box;
+  transition: transform .12s ease; }
+.avpick-av { width: 100%; height: 100%; object-fit: cover; display: block; opacity: 1; }
+/* (Photo Gallery: a picture still loading -- the media loading icon, the Photo section's icon in
+   its middle, at the sizes of a list's row --; its picture and the webview's broken picture sign hidden) */
+.photogrid .avpick-cell.av-wait::before { height: 4.45vh; transform: translate(-50%, -50%); }
+.pg-flat { display: none; }
+.photogrid .avpick-cell.av-wait > .pg-flat { display: block; position: absolute; left: 50%; top: 50%; height: 4.15vh; aspect-ratio: 1; transform: translate(-50%, -50%);
+  z-index: 3; pointer-events: none; background: var(--icon-flat, var(--icon-color, #fff));
+  -webkit-mask: var(--sec-flat) center / contain no-repeat; mask: var(--sec-flat) center / contain no-repeat; }
+.avpick-cell.sel::after { content: ""; position: absolute; inset: -0.8vh; border: 0.3vh solid rgba(255,255,255,0.42); border-radius: 0.9vh;
+  pointer-events: none; animation: xmbPickGlow 3.4s ease-in-out infinite; }
+/* the square breathes like the selected subsection titles do */
+/* (both keyframes use the same shadow list so the browser blends between
+   them smoothly: dim flat grey square <-> bright white square with a soft glow) */
+@keyframes xmbPickGlow {
+  0%, 100% { border-color: rgba(255,255,255,0.42);
+             box-shadow: 0 0 0 rgba(255,255,255,0), 0 0 0 rgba(255,255,255,0), inset 0 0 0 rgba(255,255,255,0); }
+  50% { border-color: rgba(255,255,255,1);
+             box-shadow: 0 0 0.6vh rgba(255,255,255,0.55), 0 0 1.2vh rgba(255,255,255,0.22), inset 0 0 0.6vh rgba(255,255,255,0.35); }
+}
+.avpick-scroll::-webkit-scrollbar { width: 0.36vw; }
+.avpick-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.08); }
+.avpick-scroll::-webkit-scrollbar-thumb { background: rgba(170,175,180,0.9); }
+.avpick-actions { position: absolute; left: 0; right: 0; top: 60.6vh; display: flex; gap: 1.72vw; justify-content: center; }
+.avpick-actions button { font-family: var(--ui-font); font-size: 2.55vh; width: 11.4vw; height: 4.07vh; padding: 0; color: #ffffff;
+  border: none; cursor: pointer; border-radius: 0.35vh; background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); }
+.avpick-actions .form-ok.disabled { background: linear-gradient(180deg, #154a6e, #11405f); color: rgba(120,160,190,0.9); cursor: default; }
+.avpick-actions .form-alt.act-focus { background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); color: #fff; }
+/* Change Photo / Avatars: the same blue as Cancel */
+.avpick-actions .form-alt { background: linear-gradient(180deg, #10a0f5, #0089e6 55%, #0082dd); color: #fff; }
+/* lower band with the control hints */
+.avpick-foot { position: absolute; left: 0; right: 0; top: 84.3vh; bottom: 0;
+  background: linear-gradient(180deg, rgba(14,10,30,0.82) 0%, rgba(8,4,16,0.72) 45%, rgba(10,2,4,0.6) 100%);
+  border-top: 1px solid rgba(120,110,170,0.35); }
+.avpick-foot .af-row { position: absolute; left: 18.4vw; top: 1.1vh; display: flex; align-items: center; gap: 4.6vw; font-size: 2.6vh; color: #fff;
+  text-shadow: 0 0.15vh 0.4vh rgba(0,0,0,0.5); }
+.avpick-foot .af-g { margin-right: 0.9vw; font-size: 3.3vh; font-weight: 600; vertical-align: -0.2vh; }
+/* SELECT badge + the small links line under Back / Enter (capture: badge
+   x 18.2-23.7 %, centre y 91.4 %; text from x 24.25 %) */
+.avpick-foot .af-sel { position: absolute; left: 18.2vw; top: 5.75vh; height: 2.75vh; display: flex; align-items: center;
+  gap: 0.55vw; font-size: 2.05vh; color: #fff; text-shadow: 0 0.15vh 0.4vh rgba(0,0,0,0.5); white-space: nowrap; }
+.avpick-foot .af-selimg { height: 2.9vh; width: auto; display: block; }
+/* Photo Gallery grid: same panel, no header (the grid uses the full height) */
+.form.photogrid .avpick-scroll { top: 1vh; height: 55.6vh; }
+/* Photo Gallery / Choose an Image (pictures, backgrounds, overlays...): each
+   picture whole, in its own ratio inside its square, like inside a photo
+   folder (avatars stay square) */
+.form.photogrid .avpick-av, .form.avimages .avpick-av,
+.form.avimages .avpick-current img, .form.avimages .avpick-current video,
+.form.avimages .avpick-preview img, .form.avimages .avpick-preview video { object-fit: contain; }
+/* controller focus highlight for action buttons (avatar/photo Cancel/Confirm,
+   the keyboard Send) so they can be hovered and pressed with a controller. */
+.act-focus { outline: 0.28vh solid rgba(255,255,255,0.95); outline-offset: 0.25vh;
+  box-shadow: 0 0 1.3vh rgba(255,255,255,0.55); filter: brightness(1.18); }
+
+/* full-screen list picker (background music, playlist building): laid out
+   like the Sign-In screen (see .uisheet) */
+.lp-list { width: 43.39vw; max-height: 47vh; overflow-y: auto; position: relative; flex: 0 1 auto;
+  padding: 3vh 2.6vw; margin: -3vh -1.4vw; box-sizing: content-box; }   /* (room for the whole glow: its edge never shows the list's box) */
+.lp-space { position: relative; }
+/* (rows are 48 px: ListPicker places them itself, only those near the view) */
+.lp-item { position: absolute; left: 0; right: 0; height: 48px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 0.8vw; padding: 0 0.8vw; font-size: 2.12vh; color: rgba(238,241,244,0.72); cursor: pointer;
+  text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.45); border: 2px solid transparent; border-radius: 0.3vh; }
+.lp-item.sel { color: #fff; border-color: rgba(255,255,255,0.92); animation: tfxFill 3.4s ease-in-out infinite; }
+.lp-item.sel .lp-label { animation: xmbLabelGlowF 3.4s ease-in-out infinite; }
+.lp-check { width: 4.98vh; height: 4vh; flex: none; margin: 0 -0.8vh 0 -1.2vh; }
+/* the name takes at most 3/4 of the row, its artist / album the rest (on the
+   right): neither covers the other, and either scrolls when it's too long */
+.lp-label { flex: 0 0 auto; max-width: 75%; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lp-sub { flex: 0 1 auto; min-width: 0; margin-left: auto; font-size: 1.7vh; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- photo / video viewer: media fullscreen, controls lower-left ---------- */
+.mediaview { position: fixed; inset: 0; z-index: 80; display: none; background: #000; }
+.mediaview.show { display: block; }
+/* photo viewer direction glyph: hidden by default, flashes near the bottom-left
+   on L1 / R1, then fades (T12). */
+/* the control image inside the glyph must fit the box (matches the Music
+   Player triangle-menu icon size): otherwise it renders at full natural size */
+.mv-name { font-size: 22px; opacity: 0.92; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- music player: song info + controls, lower-left (clean wave behind) ---------- */
+.musicplayer { position: fixed; inset: 0; z-index: 75; display: none; }
+/* Visual Player: the Canyon visualizer, full screen under the player's own info */
+.mp-visual { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 74; display: block; visibility: hidden; pointer-events: none; background: #000; }
+.mp-visual.show { visibility: visible; pointer-events: auto; }
+.musicplayer.show { display: block; }
+
+/* ---------- music player v2 (icon cluster + green progress) ---------- */
+.mp2 { position: absolute; inset: 0; }
+/* icon control cluster: toggled with TRIANGLE. The whole block sits on the
+   LEFT (like the reference), but the rows and subtitle stay centred relative to
+   each other (widest row centres the shorter ones). */
+.mp2-cluster { position: absolute; left: 27.3vw; top: 34.8vh; transform: translateX(-50%); width: max-content;
+  display: none; text-align: center; }
+.mp2-cluster.on { display: block; }
+/* Music player capture: 46 px icons on a ~64-70 px pitch, rows 65 px apart,
+   centred on x 524; the focused icon is drawn ~1.25x */
+.mp2-crow { display: flex; align-items: center; justify-content: center; gap: 0; height: 6.7vh; margin-bottom: -0.65vh; }
+.mp2-btn { width: 6.85vh; height: 6.85vh; margin: 0 -0.26vw; background: none; border: none; padding: 0; cursor: pointer;
+  opacity: 0.85; transition: opacity .12s ease, transform .12s ease; }
+/* the icons carry their own southeast shadow (drawn into the textures) and
+   are shown at their native size: 46 px glyphs on a 64 px pitch (captures) */
+.mp2-btn .mpi { width: 100%; height: 100%; object-fit: contain; display: block; }
+.mp2-btn.sel { opacity: 1; transform: scale(1.3); }
+/* the repeat / shuffle row: the wide icons, repeat and SHUF ~95 px apart */
+.mp2-crow:nth-child(3) .mp2-btn { width: auto; height: 6.85vh; margin: 0 -0.18vw; }
+.mp2-crow:nth-child(3) .mp2-btn .mpi { width: auto; height: 100%; }
+.mp2-sub { margin-top: 2.5vh; font-size: var(--mp-sub, 2.2vh); display: flex; align-items: center; justify-content: center;
+  gap: 0.5vw; min-height: 3vh; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+.mp2-hintimg { height: 2.7vh; width: auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5)); }
+/* volume mini-window (opens from the Volume Control icon) */
+.mp2-vol { display: none; margin: 1.6vh auto 0; width: max-content;
+  background: rgba(14,14,14,0.9); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 0.55vh; padding: 0.7vh 0.75vw 0.9vh; text-shadow: none; }
+.mp2-vol.on { display: block; }
+/* Volume Control (capture): "Normal" over nine beans between "-" and "+";
+   lit beans up to the level, the current one with the pulsing focus outline */
+.mp2-vlabel { font-size: 2.3vh; text-align: center; margin-bottom: 0.2vh; color: #f2f2f2; }
+.mp2-vrow { display: flex; align-items: center; gap: 0.3vw; color: #f0f0f0; font-size: 2.2vh; line-height: 1; }
+.mp2-vminus, .mp2-vplus { width: 0.9vw; text-align: center; }
+.vbs { display: flex; gap: 0.32vw; }
+.vb { position: relative; display: block; width: 1.85vh; height: 3.7vh; }
+.vb img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.vb .vb-focus { animation: vbPulse 1.6s ease-in-out infinite; }
+@keyframes vbPulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+/* bottom block, placed from the capture (1920x1080): status icons at y 832-861,
+   cover x 123-211 / y 897-978, title x 245 (centre y 921), artist line y 966;
+   track counter right-aligned to x 1803 at y 845, time at y 925, codec badge,
+   and the progress bar x 1418-1803 / y 963-975 */
+.mp2-bottom { position: absolute; inset: 0; pointer-events: none; }
+.mp2-info { position: absolute; left: 6.4vw; top: 83.06vh; display: flex; align-items: center; gap: 0; max-width: 70vw;
+  transition: opacity .6s ease; }
+.mp2-info.idle { opacity: 0; }
+.mp2-art { width: 8.2vh; height: 8.2vh; flex: 0 0 auto; margin-right: 1.65vw;
+  overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.mp2-cover { width: 100%; height: 100%; object-fit: contain; }
+.mp2-art .sysicon { width: 7.6vh; height: 7.6vh; background: var(--icon-color); opacity: 0.85;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: contain; mask-size: contain; }
+.mp2-meta { display: flex; flex-direction: column; }
+.mp2-title { font-size: var(--mp-title, 3.15vh); line-height: 4vh; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp2-artist { font-size: var(--mp-artist, 2.35vh); line-height: 3vh; margin-top: 0.45vh; white-space: nowrap; }
+/* status indicators (play / repeat / shuffle), shown with SELECT */
+.mp2-status { position: absolute; left: 6.95vw; top: 76.1vh; height: 4.4vh; display: none; align-items: center; gap: 3vw;
+  transition: opacity 0.5s ease; }
+.mp2-status.on { display: flex; }
+.mp2-status.faded { opacity: 0; }
+.mp2-st { height: 4.4vh; width: auto; object-fit: contain; }
+.mp2-st-rep { display: inline-flex; align-items: center; gap: 6px; }
+/* the "1" that sits right of the repeat icon in repeat-one mode: the glyph is
+   the left ~1/3 of its image, so crop the box to show just the "1". */
+.mp2-st-rep1 { width: auto; margin-left: -1.3vh; }
+/* track counter + time + progress bar: toggled with SELECT */
+.mp2-display { position: absolute; right: 6.09vw; top: 76.67vh; width: 20.1vw; text-align: right; display: none; }
+.mp2-display.on { display: block; }
+.mp2-count { font-size: var(--mp-count, 2.2vh); line-height: 3vh; margin-top: 0.4vh; }
+.mp2-tline { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 4.4vh; height: 3vh; }
+.mp2-time { font-size: var(--mp-time, 2.2vh); white-space: nowrap; }
+.mp2-type { display: inline-flex; align-items: center; }
+.mp2-typeimg { height: 2.5vh; width: auto; object-fit: contain; }
+.mp2-codec { border: 1px solid rgba(255,255,255,0.5); border-radius: 3px; padding: 0 6px; font-size: 1.4vh; }
+/* progress bar (Music capture): a 12 px pill with a light 1 px rim and a
+   see-through grey track that brightens along its top and bottom edges; the
+   fill is a glossy lime bar (bright top highlight, olive core, bright bottom
+   reflection) with a straight leading edge. */
+.mp2-bar { position: relative; width: 100%; height: 1.11vh; margin-top: 2vh; overflow: hidden; border-radius: 999px;
+  border: 1px solid rgba(205,205,205,0.6);
+  background: linear-gradient(180deg, rgba(255,255,255,0.52) 0%, rgba(255,255,255,0.2) 16%, rgba(255,255,255,0.18) 32%,
+    rgba(255,255,255,0.27) 52%, rgba(255,255,255,0.3) 68%, rgba(255,255,255,0.38) 80%, rgba(255,255,255,0.58) 90%, rgba(255,255,255,0.5) 100%); }
+.mp2-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  border-radius: 999px 0 0 999px; transition: width .2s linear;
+  background: linear-gradient(180deg, #607611 0%, #fbff6f 11%, #c0de15 24%, #8cae04 37%, #80a20b 50%,
+    #5f8800 62%, #95b12f 74%, #dde487 87%, #6f7e27 100%);
+  box-shadow: inset -1px 0 0 #a6c032; }
+.mp2-bargloss { display: none; }
+
+/* video subtitle chooser */
+
+/* ---------- fade-to-black held while a launched game starts ---------- */
+.fadeblack { position: fixed; inset: 0; z-index: 200; background: #000; opacity: 0;
+  pointer-events: none; transition: opacity 0.6s ease; }
+/* starting a game: the whole screen dissolves into black (everything keeps
+   moving underneath while it does), then the game starts */
+.fadeblack.show { opacity: 1; pointer-events: auto; transition: opacity 0.9s cubic-bezier(.4,0,.2,1); }
+/* screen brightness dimmer: a black veil whose opacity rises as brightness
+   drops. Sits above the UI but below the game-launch fade, and never blocks
+   input. */
+.dim { position: fixed; inset: 0; z-index: 190; background: #000; opacity: 0;
+  pointer-events: none; transition: opacity 0.12s linear; }
+
+/* ---------- PSN profile card (Friends section) ---------- */
+.pc-hint { font-size: 17px; opacity: 0.7; }
+

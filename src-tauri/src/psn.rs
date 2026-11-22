@@ -7,11 +7,15 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn load(path: &Path) -> PsnFile {
-    fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    let mut f: PsnFile = fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    // (each sign-in's ID and password: written plain, to be read in the file itself; one sealed
+    // by an older version (secret.rs) is opened, and written plain the next time it's saved)
+    for a in f.accounts.iter_mut() { a.email = crate::secret::open(&a.email); a.password = crate::secret::open(&a.password); }
+    f
 }
 pub fn save(path: &Path, file: &PsnFile) -> Result<(), String> {
     let json = serde_json::to_string_pretty(file).map_err(|e| e.to_string())?;
-    fs::write(path, json).map_err(|e| e.to_string())
+    crate::paths::write_whole(path, json).map_err(|e| e.to_string())
 }
 
 /// Upsert a fake account. If `id` is empty, a new one is generated.

@@ -140,9 +140,11 @@ export async function call(cmd, args = {}) {
     case "browser_cmd": case "browser_type": if (mock.browser) mock.browser.cmds.push({ cmd, ...args }); return null;
     case "browser_input": case "browser_visible": return null;
     case "content_writable": return { ok: true, dir: "(preview)" };
-    case "app_info": return { name: "MaXMB", version: "1.1.4", contentRoot: "(preview)" };
+    case "app_info": return { name: "MaXMB", version: "2.0.0", contentRoot: "(preview)" };
     case "scan_library": return structuredClone(MOCK_GAMES);
     case "game_sources_sync": return 0;
+    case "game_art_steam": case "game_art_db": return 0;
+    case "custom_theme_delete": return null;
     case "media_recognize": case "media_source_remove": return 0;
     case "pick_file": return null;
     case "image_has_alpha": return /\.png$/i.test(args.path || "");
@@ -151,6 +153,12 @@ export async function call(cmd, args = {}) {
     case "pick_font": return null;
     case "game_meta_save": { const g = MOCK_GAMES.find((x) => x.folder === args.folder);
       if (g) { if (args.patch.isDisc) MOCK_GAMES.forEach((x) => { x.isDisc = false; }); Object.assign(g, args.patch); } return null; }
+    // (the preview: the game's folder named after its new title, as lib.rs game_folder_rename)
+    case "game_folder_rename": { const g = MOCK_GAMES.find((x) => x.folder === args.folder); if (!g) return args.folder;
+      const base = String(args.title).replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "") || "Game";
+      const parent = args.folder.replace(/[\\/][^\\/]*$/, ""); let to = parent + "/" + base, n = 2;
+      while (to !== args.folder && MOCK_GAMES.some((x) => x.folder === to)) to = parent + "/" + base + " (" + n++ + ")";
+      g.folder = to; return to; }
     case "game_delete": { const i = MOCK_GAMES.findIndex((x) => x.folder === args.folder); if (i >= 0) MOCK_GAMES.splice(i, 1); return null; }
     // (the preview keeps the icon shading file in memory, like the app's cache file)
     case "icon_shades_load": return mock.iconShades || "{}";
@@ -161,6 +169,7 @@ export async function call(cmd, args = {}) {
     case "game_sources_detected": return [];
     case "game_sources_delete": return null;
     case "game_sources_remove": return 0;
+    case "game_sources_added": return 0;
     case "pick_folder": return null;
     case "photo_deletable": return true;
     case "photo_delete": case "photo_write": return null;
@@ -219,6 +228,7 @@ export async function call(cmd, args = {}) {
     case "video_delete": return null;
     case "video_plan": return { mode: "direct", cached: null };
     case "video_preload": return false;
+    case "video_drop_copy": return false;
     case "music_deletable": return true;
     case "music_delete": return null;
     default: return null;

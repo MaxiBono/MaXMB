@@ -26,10 +26,29 @@ export const FriendMethods = {
       if (acct) {
         // the player's own card; its trophy level comes from Friend
         // Personalization when set, otherwise a stable random value.
+        // (2.0.0: Automatic becomes the Trophy Level of every user once, a level
+        // chosen before it existed included; chosen again afterwards, it stays)
+        if (!this._friendCfg().levelAuto) {
+          const c = { ...this._friendCfg(), levelAuto: true }; delete c.playerLevel;
+          this.user.friendConfig = c; this._persistUser();
+        }
         const pl = this._friendCfg().playerLevel;
-        // a new account starts at level 1; "random" = a random level from 1 to 30
+        // Automatic (not chosen): counted from the trophies earned (trophies.js);
+        // "random" = a random level from 1 to 30
         if (pl === "random") this._userLevel ||= 1 + Math.floor(Math.random() * 30);
-        else this._userLevel = pl != null ? pl : 1;
+        else this._userLevel = pl != null ? pl : this._trophyLevel();
+        // Connect with Steam Friends on: the card and the friends from Steam (steamfriends.js)
+        const steam = await this._steamFriendsCards(acct);
+        if (steam) {
+          // (Connect with Steam Friends: the trophy level is always Automatic)
+          this._userLevel = this._trophyLevel();
+          base.push({ kind: "playercard", title: steam.player.onlineId, acct: steam.player, steam: true, icon: { avatar: steam.player.avatar }, level: this._userLevel,
+            plusFn: () => !!this._friendCfg().playerPlus });
+          for (const f of steam.friends) base.push({ kind: "friendcard", title: f.name, friend: f, icon: { avatar: f.avatar } });
+          const online = steam.friends.filter((f) => f.indicator === "sign_in" || f.indicator === "afk").length;
+          this.cbs.onFriendsOnline && this.cbs.onFriendsOnline(online, false);
+          return base;
+        }
         base.push({ kind: "playercard", title: acct.onlineId, acct, icon: { avatar: acct.avatar }, level: this._userLevel,
           plusFn: () => !!this._friendCfg().playerPlus });
         // how many friends to show comes from Friend Personalization (falls back
@@ -51,7 +70,7 @@ export const FriendMethods = {
   _friendCfg() {
     const c = (this.user && this.user.friendConfig) || {};
     return { mode: c.mode || "random", count: c.count ?? 8, min: c.min ?? 2, max: c.max ?? 30,
-      cards: Array.isArray(c.cards) ? c.cards : [], playerLevel: c.playerLevel, playerPlus: !!c.playerPlus };
+      cards: Array.isArray(c.cards) ? c.cards : [], playerLevel: c.playerLevel, playerPlus: !!c.playerPlus, levelAuto: !!c.levelAuto };
   },
   // How many friends to show, based on the chosen mode. Cached per session so it
   // doesn't reshuffle on every render.
@@ -343,20 +362,23 @@ export const FriendMethods = {
   },
   // Set the trophy level shown on the player's own card (1-30).
   // A trophy level: type any number (1 or more), or Random (1-30, as before)
-  _askTrophyLevel(title, cur, submit, done, cancel) {
-    this._askNumberOrRandom(title, cur, submit, done, cancel, { min: 1, what: "Level", randomSub: "A random level from 1 to 30." });
+  _askTrophyLevel(title, cur, submit, done, cancel, auto = false) {
+    this._askNumberOrRandom(title, cur, submit, done, cancel, { min: 1, what: "Level", randomSub: "A random level from 1 to 30.", auto });
   },
   // type a number (min or more), or Random (with its usual limits)
-  _askNumberOrRandom(title, cur, submit, done, cancel, { min = 0, what = "Number", randomSub = "" } = {}) {
-    const again = () => this._askNumberOrRandom(title, cur, submit, done, cancel, { min, what, randomSub });
+  _askNumberOrRandom(title, cur, submit, done, cancel, { min = 0, what = "Number", randomSub = "", auto = false } = {}) {
+    const again = () => this._askNumberOrRandom(title, cur, submit, done, cancel, { min, what, randomSub, auto });
     this.overlay = this.listPicker;
     this.listPicker.open({ title, submit: "Next", items: [
+      // (your own Trophy Level: Automatic, from the trophies earned, first)
+      ...(auto ? [{ label: "Automatic", id: "auto", sub: "" }] : []),
       { label: "Random", id: "random", sub: randomSub },
-      { label: `Custom ${what}\u2026`, id: "type", sub: cur != null && cur !== "random" ? `Now: ${what === "Level" ? "Level " : ""}${cur}` : "" }] }, (ch) => {
+      { label: `Custom ${what}\u2026`, id: "type", sub: cur != null && cur !== "random" && cur !== "auto" ? `Now: ${what === "Level" ? "Level " : ""}${cur}` : "" }] }, (ch) => {
       this.listPicker.close();
       if (ch.id === "random") { done("random"); return; }
+      if (ch.id === "auto") { done("auto"); return; }
       this.overlay = this.textForm;
-      this.textForm.open({ title, fields: [{ key: "n", label: what, value: cur != null && cur !== "random" ? String(cur) : "", type: "number", required: true }], submit },
+      this.textForm.open({ title, fields: [{ key: "n", label: what, value: cur != null && cur !== "random" && cur !== "auto" ? String(cur) : "", type: "number", required: true }], submit },
         (out) => {
           this.textForm.close();
           const n = parseInt(String(out.n || "").replace(/[^0-9]/g, ""), 10);
@@ -364,17 +386,17 @@ export const FriendMethods = {
           done(n);
         }, () => { this.textForm.close(); again(); });
     }, () => { this.listPicker.close(); cancel(); });
-    this.listPicker.i = cur === "random" ? 0 : 1; this.listPicker._upd();
+    this.listPicker.i = (auto ? 1 : 0) + (cur === "random" ? 0 : 1) - (auto && cur === "auto" ? 2 : 0); this.listPicker._upd();
   },
   _editPlayerLevel() {
-    const cur = this._friendCfg().playerLevel ?? this._userLevel ?? 1;
+    const cur = this._friendCfg().playerLevel ?? "auto";
     this._askTrophyLevel("Trophy Level", cur, "Set Level", (lv) => {
       this.overlay = null;
-      this._userLevel = lv === "random" ? 1 + Math.floor(Math.random() * 30) : lv;
-      this._friendPersistCfg((c) => { c.playerLevel = lv; });
+      this._userLevel = lv === "random" ? 1 + Math.floor(Math.random() * 30) : lv === "auto" ? this._trophyLevel() : lv;
+      this._friendPersistCfg((c) => { if (lv === "auto") delete c.playerLevel; else c.playerLevel = lv; });
       this.audio.play("enter", 0.4);
       this._rebuildAndStay();
-    }, () => { this.overlay = null; this._rebuildAndStay(); });
+    }, () => { this.overlay = null; this._rebuildAndStay(); }, true);
   },
   // Options for an existing card: Edit or Delete.
   _friendCardMenu(idx) {

@@ -31,9 +31,15 @@ export class InfoBox {
         </div>
         <span class="ib-dt"><span class="ib-date"></span><span class="ib-time"></span></span>
         <svg class="ib-clock" viewBox="0 0 40 40" width="26" height="26">
+          <!-- (its face: darkened inside the ring, most just inside its top-left
+               edge, as the ring's own shadow falls in: the console's captures) -->
+          <defs><radialGradient id="ibFace" cx="0.6" cy="0.62" r="0.62">
+            <stop offset="0" stop-color="#000" stop-opacity="0.2"/><stop offset="0.6" stop-color="#000" stop-opacity="0.26"/>
+            <stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient></defs>
+          <circle class="ib-face" cx="20" cy="20" r="15.8" fill="url(#ibFace)"/>
           <circle cx="20" cy="20" r="17.5" fill="none" stroke="currentColor" stroke-width="3.6"/>
           <line class="ib-hour" x1="20" y1="20" x2="20" y2="11" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/>
-          <line class="ib-min"  x1="20" y1="20" x2="20" y2="8"  stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          <line class="ib-min"  x1="20" y1="20" x2="20" y2="8"  stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/>
         </svg>
       </div>`;
     this.$ = {

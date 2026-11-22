@@ -182,7 +182,6 @@ export function setPlayerIconStyle(st) {
   watch(); pulse();
   for (const id of ROOTS) styleIn(document.getElementById(id));
 }
-export const playerIconStyle = () => STYLE;
 /** The Icon Color put on the players' icons changed (xmb-shared.js setPlayerIconTint): the glows follow. */
 export function setPlayerGlowTint(c) {
   const k = c ? `${c.r},${c.g},${c.b}` : "", was = TINT ? `${TINT.r},${TINT.g},${TINT.b}` : "";

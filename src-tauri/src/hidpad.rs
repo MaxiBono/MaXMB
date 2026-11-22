@@ -146,7 +146,7 @@ pub fn start(app: tauri::AppHandle) {
     std::thread::spawn(move || loop {
         for (path, kind) in win::enumerate() {
             {
-                let mut o = open.lock().unwrap();
+                let mut o = open.lock().unwrap_or_else(|e| e.into_inner());
                 if o.contains(&path) { continue; }
                 o.insert(path.clone());
             }
@@ -175,7 +175,7 @@ pub fn start(app: tauri::AppHandle) {
                         }
                     }
                 }
-                open2.lock().unwrap().remove(&path);
+                open2.lock().unwrap_or_else(|e| e.into_inner()).remove(&path);
             });
         }
         std::thread::sleep(Duration::from_secs(2));
@@ -196,9 +196,15 @@ mod win {
     #[repr(C)]
     #[derive(Default)]
     struct HIDD_ATTRIBUTES { size: u32, vid: u16, pid: u16, ver: u16 }
+    const _: () = assert!(std::mem::size_of::<HIDD_ATTRIBUTES>() == 12);
     #[repr(C)]
     #[derive(Default)]
-    struct HIDP_CAPS { usage: u16, usage_page: u16, input_len: u16, output_len: u16, feature_len: u16, rest: [u16; 17] }
+    // (Windows writes the whole struct: 32 USHORTs, 64 bytes -- Usage .. FeatureReportByteLength,
+    // Reserved[17], then the ten Number* counts. A shorter one let HidP_GetCaps write 20 bytes past
+    // it, over the stack beside it, each time a controller was opened: the heap corruption crash.)
+    struct HIDP_CAPS { usage: u16, usage_page: u16, input_len: u16, output_len: u16, feature_len: u16, rest: [u16; 27] }
+    const _: () = assert!(std::mem::size_of::<HIDP_CAPS>() == 64);
+    const _: () = assert!(std::mem::size_of::<SP_DEVICE_INTERFACE_DATA>() == 32);
 
     const DIGCF_PRESENT: u32 = 0x2;
     const DIGCF_DEVICEINTERFACE: u32 = 0x10;

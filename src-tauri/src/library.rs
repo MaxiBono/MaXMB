@@ -117,7 +117,7 @@ pub(crate) fn write_meta(dir: &Path, m: &Map<String, Value>) -> std::io::Result<
         out += &format!("  {}: {}{}\n", serde_json::to_string(k).unwrap_or_default(), v, if i + 1 < order.len() { "," } else { "" });
     }
     out += "}";
-    fs::write(meta_path(dir), out)
+    crate::paths::write_whole(&meta_path(dir), out)
 }
 /// A program or script in a custom section: its details go in program.json,
 /// made once with the Format PC (an older game.json is moved into it, the
@@ -203,13 +203,29 @@ pub(crate) fn parse_game(dir: &Path, album: Option<String>, icon_cache: Option<&
         .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
     let console = Some(gs("console")).filter(|s| !s.is_empty()).unwrap_or_else(|| (if prog { "PC" } else { "PS3" }).into());
 
-    // no icon file: the .exe's / shortcut's own icon
+    // no icon file: the .exe's / shortcut's own icon (a game started through
+    // its store's link: its own program's, from where it was found)
     let own_icon = || -> Option<String> {
         let cache = icon_cache?;
-        let target = launch_path(dir, &launch).or_else(|| shortcut.as_ref().map(|s| dir.join(s)))?;
+        let target = launch_path(dir, &launch).or_else(|| shortcut.as_ref().map(|s| dir.join(s)))
+            .or_else(|| Some(gs("sourceExe")).filter(|s| !s.is_empty()).map(PathBuf::from).filter(|p| p.is_file()))?;
         crate::gamesrc::shortcut_icon(&target, cache)
     };
+    // (a blank icon.png from before: gone, made again from the program)
+    crate::gamesrc::drop_blank_icon(dir);
+    // (a program's icon put in off centre by an older version: centred)
+    crate::gamesrc::center_local_icon(dir);
     let icon = find_first(dir, &["icon.png", "icon.jpg", "icon.jpeg", "icon.webp", "icon.gif", "ICON0.PNG"]).or_else(own_icon);
+    let background = find_first(dir, &["background.png", "background.jpg", "background.jpeg", "background.webp", "PIC1.PNG"]);
+    let preview = find_first(dir, &["preview.mp4", "preview.webm", "preview.mov", "preview.gif"]);
+    // Background music accepts lossless + common lossy formats (the webview
+    // decodes flac/wav/m4a/aac in addition to ogg/mp3/opus).
+    let music = find_first(dir, &["music.flac", "music.wav", "music.ogg", "music.mp3", "music.opus", "music.m4a", "music.aac"]);
+    // (its banner in Trophy Collection)
+    let trophy = find_first(dir, &["trophy.png", "trophy.jpg", "trophy.jpeg", "trophy.webp"]);
+    let stamp_of = |p: &Option<String>| p.as_deref().and_then(|f| fs::metadata(f).ok()).and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis().to_string()).unwrap_or_default();
+    let art_stamp = [&icon, &background, &preview, &music, &trophy].iter().map(|p| stamp_of(p)).collect::<Vec<_>>().join("|");
     Some(Game {
         id: slug(&format!("{}-{}", album.clone().unwrap_or_default(), folder_name)),
         folder: dir.display().to_string(),
@@ -225,21 +241,16 @@ pub(crate) fn parse_game(dir: &Path, album: Option<String>, icon_cache: Option<&
         title_id: gs("titleId"),
         options_band: m.get("optionsBand").and_then(|v| v.as_bool()),
         hide_title: m.get("hideTitleOnBackground").and_then(|v| v.as_bool()),
+        trophies: m.get("trophies").and_then(|v| v.as_bool()),
         launch,
         args,
         icon,
-        background: find_first(
-            dir,
-            &["background.png", "background.jpg", "background.jpeg", "background.webp", "PIC1.PNG"],
-        ),
-        preview: find_first(dir, &["preview.mp4", "preview.webm", "preview.mov", "preview.gif"]),
-        // Background music accepts lossless + common lossy formats (the webview
-        // decodes flac/wav/m4a/aac in addition to ogg/mp3/opus).
-        music: find_first(
-            dir,
-            &["music.flac", "music.wav", "music.ogg", "music.mp3", "music.opus", "music.m4a", "music.aac"],
-        ),
+        background,
+        preview,
+        music,
+        trophy,
         copy: 1,
+        art_stamp,
     })
 }
 

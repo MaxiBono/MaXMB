@@ -44,7 +44,8 @@ export const MediaMethods = {
     this._liveAt[id] = now;
     setTimeout(async () => {
       if (this.columns[this.selCat]?.id !== id) return;
-      if (id === "game") { this._refreshGameColumn().then(() => this._scrapeWaiting()); return; }
+      // (new games show with their own icon: their art online only comes with Game Recognition)
+      if (id === "game") { this._refreshGameColumn(); return; }
       // the whole list is read and built again only when the library's
       // fingerprint changed (files added, removed, renamed or changed): with a
       // big library that's a lot of work (and memory to clean up afterwards)
@@ -151,8 +152,7 @@ export const MediaMethods = {
   // File Recognition, with the menu locked and a counter beside the option
   async _mediaRecognize(kind) {
     const n = await this._runLocked(`media_recog::${kind}`, "Recognizing files...",
-      () => call("media_recognize", { kind }).catch(() => 0));
-    await this._refreshMediaColumns();
+      () => call("media_recognize", { kind }).catch(() => 0), () => this._refreshMediaColumns());
     this._shotFeedback(n ? `${n} new file${n === 1 ? "" : "s"} found` : "No new files found");
   },
   _refreshParentMediaFolders() {
@@ -445,6 +445,8 @@ export const MediaMethods = {
     const url = (mm) => assetUrl(mm.path), small = (mm) => thumbUrl(mm.path);
     const openGrid = (start) => {
       this.overlay = this.photoGrid;
+      // (a picture still loading: the loading icon with the Photo section's icon in its middle)
+      this.photoGrid.flat = this._secFlatOf("photo");
       this.photoGrid.open(media, small, (idx) => {
         // view the chosen photo; Back returns to the grid at that photo
         this.photoGrid.close();

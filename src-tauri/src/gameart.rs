@@ -1,7 +1,7 @@
 //! A game's own media (Game Settings) and the game databases.
 //!
-//! * `set_media`: a game's icon / background / video / music is a file named
-//!   icon.*, background.*, preview.* or music.* in its folder. Choosing one
+//! * `set_media`: a game's icon / background / video / music / Trophy Collection banner is a
+//!   file named icon.*, background.*, preview.*, music.* or trophy.* in its folder. Choosing one
 //!   copies the file there and deletes the one it replaces.
 //! * `scrape`: the art and full name of a game from SteamGridDB, then
 //!   TheGamesDB, then RAWG (each one only for what the ones before
@@ -20,6 +20,8 @@ pub const KINDS: &[(&str, &[&str])] = &[
     ("background", &["png", "jpg", "jpeg", "webp"]),
     ("preview", &["mp4", "webm", "mov", "gif"]),
     ("music", &["flac", "wav", "ogg", "mp3", "opus", "m4a", "aac"]),
+    // (the game's banner in Trophy Collection)
+    ("trophy", &["png", "jpg", "jpeg", "webp"]),
 ];
 fn exts_for(kind: &str) -> Option<&'static [&'static str]> { KINDS.iter().find(|(k, _)| *k == kind).map(|(_, e)| *e) }
 fn ext_of(p: &Path) -> String { p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default() }
@@ -33,6 +35,293 @@ fn current(dir: &Path, kind: &str) -> Vec<PathBuf> {
             let stem = p.file_stem().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default();
             stem == kind || Some(stem.as_str()) == console
         }).collect()
+}
+
+/// Steam's own pictures as the stand-in of a game recognized as a Steam game
+/// (by its store, its Steam app ID next to it, a Steam emulator's files, its
+/// name...), never a PS3 game: the game's logo (its name, the picture Steam's
+/// library shows over its banner) as its icon and the library's banner (hero) as
+/// its background, at full size (a game with no hero: its store header, zoomed in
+/// as the hero is). Each takes the place of what the game has
+/// unless that was chosen by you or is a PS3 game's own (SRC_STEAM). Once per
+/// game (`done`: the games it was done for): a picture removed afterwards isn't
+/// put back. Only games in the system's own folder (`root`). True when a
+/// picture was put in.
+pub fn steam_standin(root: &Path, done: &Path, folder: &Path, appid: &str) -> bool {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    if appid.is_empty() || !appid.chars().all(|c| c.is_ascii_digit()) || !folder.is_dir() { return false; }
+    let norm = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()).to_string_lossy().replace('\\', "/").to_lowercase();
+    let key = norm(folder);
+    if !key.starts_with(&format!("{}/", norm(root).trim_end_matches('/'))) { return false; }
+    let meta: serde_json::Value = fs::read_to_string(folder.join("game.json")).ok().and_then(|t| serde_json::from_str(t.trim_start_matches('\u{feff}')).ok()).unwrap_or(serde_json::Value::Null);
+    if meta["console"].as_str().map(|c| c.to_uppercase().contains("PS3")).unwrap_or(false) || meta["ps3Key"].is_string() || meta["titleId"].is_string() { return false; }
+    let pics_done = {
+        let _l = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let list: Vec<String> = fs::read_to_string(done).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        list.contains(&key)
+    };
+    // (the Trophy Collection banner: looked for on its own, also for a game whose other pictures
+    // were looked for before there were banners)
+    let banner = banner_due(folder);
+    if pics_done && !banner { return false; }
+    let mut kinds: Vec<(&str, &str)> = Vec::new();
+    if !pics_done { kinds.extend([("icon", "logo.png"), ("background", "library_hero.jpg")]); }
+    if banner { kinds.push(("trophy", STEAM_BANNER)); }
+    let mut added = false;
+    // (each picture: put in, kept -- yours, a PS3 game's, put in before -- or Steam has none; written in the log)
+    let mut said: Vec<String> = Vec::new();
+    let mut answered = true;
+    for (kind, file) in kinds {
+        if !may_fill(folder, kind, SRC_STEAM) {
+            let src = art_source(folder, kind).unwrap_or_default();
+            // (Steam's logo put in by an older version: its see-through border cut off now)
+            let cut = kind == "icon" && src == SRC_STEAM && current(folder, "icon").iter().any(|f| f.extension().map(|e| e.eq_ignore_ascii_case("png")).unwrap_or(false) && trim_transparent(f));
+            if cut { added = true; }
+            said.push(format!("{kind} kept ({src}){}", if cut { ", its border cut" } else { "" })); continue;
+        }
+        // (at full size, as Steam has it; the game's own one stays when Steam has none)
+        let ext = if file.ends_with(".png") { "png" } else { "jpg" };
+        let tmp = folder.join(format!(".{kind}.steam.{ext}"));
+        // (a game without a library hero -- the older ones Steam never made one for --: its
+        // store header as the background, shown zoomed in as the hero is; the icon stays its own)
+        let mut got = steam_pic_got(appid, file, &tmp);
+        let mut what = "";
+        if kind == "background" && got == Some(false) { got = steam_pic_got(appid, "header.jpg", &tmp); what = " (Steam's header: no library hero)"; }
+        match got {
+            Some(true) => {
+                if kind == "icon" { trim_transparent(&tmp); }
+                retire(folder, kind);
+                if fs::rename(&tmp, folder.join(format!("{kind}.{ext}"))).is_ok() { mark_source(folder, kind, SRC_STEAM); added = true; said.push(format!("{kind} put in{what}")); }
+            }
+            Some(false) => said.push(format!("{kind}: Steam has none")),
+            None => { answered = false; said.push(format!("{kind}: Steam didn't answer")); }
+        }
+        // (the banner: Steam answered, so it isn't looked for again -- one removed stays removed)
+        if kind == "trophy" && got.is_some() { banner_looked(folder); }
+        let _ = fs::remove_file(&tmp);
+    }
+    let name = folder.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    crate::log::line("INFO", "gameart", &format!("Steam pictures for {name} (app {appid}): {}", said.join(", ")));
+    // (Steam not answering: tried again the next time the game is recognized)
+    if added || (answered && crate::net::online()) {
+        let _l = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut list: Vec<String> = fs::read_to_string(done).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        if !list.contains(&key) { list.push(key); }
+        if let Some(d) = done.parent() { let _ = fs::create_dir_all(d); }
+        let _ = fs::write(done, serde_json::to_string(&list).unwrap_or_default());
+    }
+    added
+}
+/// The Steam picture a game's Trophy Collection banner is: its main capsule (shown whole in
+/// Trophy Collection, never stretched).
+pub const STEAM_BANNER: &str = "capsule_616x353.jpg";
+/// The game has no Trophy Collection banner (trophy.* in its folder) and Steam's can be put in:
+/// by itself, once (not looked for yet, and none you removed); with Steam Game Art Scraping, whenever
+/// it has none -- one you removed too, as its icon and background are --. A banner there --
+/// yours, dropped in, or put in before -- is never looked for.
+pub fn banner_due(folder: &Path) -> bool { banner_due_with(folder, filling()) }
+fn banner_due_with(folder: &Path, filling: bool) -> bool {
+    if !folder.is_dir() || is_home(folder) || !missing(folder, "trophy") { return false; }
+    let m = meta_of(folder);
+    if m["console"].as_str().map(|c| c.to_uppercase().contains("PS3")).unwrap_or(false) || m["ps3Key"].is_string() || m["titleId"].is_string() { return false; }
+    filling || (may_replace(folder, "trophy", SRC_STEAM) && m["trophyLooked"].as_bool() != Some(true))
+}
+/// Steam was asked for the game's banner (it answered, with one or without): not asked again by itself.
+pub fn banner_looked(folder: &Path) {
+    if meta_of(folder)["trophyLooked"].as_bool() == Some(true) { return; }
+    let _ = crate::library::patch_meta(folder, &[("trophyLooked", serde_json::Value::Bool(true))]);
+}
+/// Whether a game in the Games folder gets its Steam pictures looked for: never a PS3 game or
+/// PlayStation®Home; `again` (Steam Game Art Scraping, lib.rs game_art_steam): when it has no icon,
+/// background or Trophy Collection banner, or Steam's could take the place of its icon or
+/// background (its program's own, the databases'); otherwise once (`done`), when it's new or
+/// still has no icon or no background.
+pub fn steam_art_wanted(d: &Path, again: bool, done: &std::collections::HashSet<String>, new: &std::collections::HashSet<PathBuf>) -> bool {
+    if !d.is_dir() || is_home(d) { return false; }
+    let Some(m) = fs::read_to_string(crate::library::meta_path(d)).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(t.trim_start_matches('\u{feff}')).ok()) else { return false };
+    if m["console"].as_str().map(|c| c.to_uppercase().contains("PS3")).unwrap_or(false) || m["ps3Key"].is_string() || m["titleId"].is_string() { return false; }
+    // (Steam Game Art Scraping chosen: a missing icon or background looked for again, and what Steam's
+    // pictures could still take the place of)
+    if again { return missing(d, "icon") || missing(d, "background") || may_replace(d, "icon", SRC_STEAM) || may_replace(d, "background", SRC_STEAM) || banner_due(d); }
+    let key = fs::canonicalize(d).unwrap_or_else(|_| d.to_path_buf()).to_string_lossy().replace('\\', "/").to_lowercase();
+    if done.contains(&key) { return banner_due(d); }
+    new.contains(d) || art_source(d, "icon").is_none() || art_source(d, "background").is_none() || banner_due(d)
+}
+// ---- Steam Game Art Scraping and Game Art Database Scraping: a game unchanged since its art and details were last looked up
+// online isn't looked up again (content\data\game_lookups.json). What tells a change: its
+// game.json (what it holds), every file in its folder (name, size, date: a picture put in,
+// changed or removed, its shortcut), and the program it starts (size, date: the game updated).
+// The game databases are also asked again when the ones set up change (a key added).
+
+/// What the game is now, as a lookup sees it.
+pub fn lookup_print(folder: &Path) -> Option<String> {
+    if !folder.is_dir() { return None; }
+    let mut parts: Vec<String> = Vec::new();
+    let meta: serde_json::Value = fs::read_to_string(crate::library::meta_path(folder)).ok()
+        .and_then(|t| serde_json::from_str(t.trim_start_matches('\u{feff}')).ok()).unwrap_or(serde_json::Value::Null);
+    parts.push(serde_json::to_string(&meta).unwrap_or_default());
+    let stamp = |p: &Path| fs::metadata(p).ok().map(|m| format!("{}|{}", m.len(), m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis()).unwrap_or(0)));
+    let mut files: Vec<(String, String)> = fs::read_dir(folder).into_iter().flatten().flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .map(|e| (e.file_name().to_string_lossy().to_lowercase(), e.path()))
+        .filter(|(n, _)| !n.starts_with('.') && n != "game.json")
+        .filter_map(|(n, p)| Some((n, stamp(&p)?))).collect();
+    files.sort();
+    for (n, st) in files { parts.push(format!("{n}={st}")); }
+    // (the program it starts: through the app's own shortcut, a Windows shortcut, or the exe it was found by)
+    let mut targets: Vec<PathBuf> = Vec::new();
+    if let Some(l) = meta["launch"].as_str().filter(|l| !l.contains("://")) {
+        let lp = folder.join(l);
+        let ext = lp.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        if ext == crate::medialib::LINK_EXT { if let Some(t) = crate::medialib::read_link(&lp) { targets.push(t); } }
+        else if ext == "lnk" { if let Some(t) = fs::read(&lp).ok().and_then(|b| crate::gamesrc::parse_lnk(&b)).and_then(|i| i.target) { targets.push(PathBuf::from(t)); } }
+    }
+    if let Some(x) = meta["sourceExe"].as_str() { targets.push(PathBuf::from(x)); }
+    for t in targets { parts.push(format!("> {}={}", t.display().to_string().to_lowercase(), stamp(&t).unwrap_or_else(|| "-".into()))); }
+    // (FNV-1a, 64 bits: a short mark is enough to tell a change)
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in parts.join("\n").bytes() { h ^= b as u64; h = h.wrapping_mul(0x0100_0000_01b3); }
+    Some(format!("{h:016x}"))
+}
+/// The game databases set up (which ones): a change, and they're asked again. (The first mark
+/// stood for the Automatic Scraping there was, On: kept, so the games looked up then stay so.)
+pub fn lookup_setup(s: &ScrapeSettings) -> String {
+    let k = |x: &str| if x.trim().is_empty() { '0' } else { '1' };
+    format!("1{}{}{}", k(&s.sgdb_key), k(&s.tgdb_key), k(&s.rawg_key))
+}
+fn lookup_key(folder: &Path) -> String { plain_key(fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf()).to_string_lossy().to_string()) }
+/// (Windows' long-path prefix left out: the same folder however it was reached, one key)
+pub(crate) fn plain_key(p: String) -> String {
+    let p = p.strip_prefix(r"\\?\UNC\").map(|r| format!(r"\\{r}")).or_else(|| p.strip_prefix(r"\\?\").map(str::to_string)).unwrap_or(p);
+    p.replace('\\', "/").trim_end_matches('/').to_lowercase()
+}
+fn lookups_read(file: &Path) -> serde_json::Map<String, serde_json::Value> {
+    fs::read_to_string(file).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+static LOOKUPS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+/// Unchanged since its last lookup: Steam's pictures (`setup` None) or the game databases
+/// (`setup` Some: and the same databases set up as then).
+pub fn lookup_unchanged(file: &Path, folder: &Path, setup: Option<&str>) -> bool {
+    let _l = LOOKUPS.lock().unwrap_or_else(|e| e.into_inner());
+    let m = lookups_read(file);
+    let Some(e) = m.get(&lookup_key(folder)) else { return false };
+    let Some(now) = lookup_print(folder) else { return false };
+    if e["print"].as_str() != Some(now.as_str()) { return false; }
+    match setup { None => e["steam"].as_bool() == Some(true), Some(st) => e["db"].as_str() == Some(st) }
+}
+/// These games were just looked up (Steam's pictures: `steam`; the game databases: `db`, with
+/// the ones set up): kept as they are now, after what was put in. A game that changed after its
+/// other lookup (its pictures put in by this one) keeps only this one's.
+pub fn lookup_done(file: &Path, steam: &[PathBuf], db: &[PathBuf], setup: &str) {
+    if steam.is_empty() && db.is_empty() { return; }
+    let _l = LOOKUPS.lock().unwrap_or_else(|e| e.into_inner());
+    let mut m = lookups_read(file);
+    let mut all: Vec<&PathBuf> = steam.iter().chain(db.iter()).collect();
+    all.sort(); all.dedup();
+    for f in all {
+        let Some(print) = lookup_print(f) else { continue };
+        let k = lookup_key(f);
+        let old = m.get(&k).filter(|e| e["print"].as_str() == Some(print.as_str())).cloned().unwrap_or(serde_json::Value::Null);
+        let mut e = serde_json::json!({ "print": print, "path": f.display().to_string() });
+        if steam.contains(f) || old["steam"].as_bool() == Some(true) { e["steam"] = true.into(); }
+        if db.contains(f) { e["db"] = setup.into(); } else if let Some(d) = old["db"].as_str() { e["db"] = d.into(); }
+        m.insert(k, e);
+    }
+    // (games no longer there: dropped)
+    m.retain(|_, e| e["path"].as_str().map(|p| Path::new(p).is_dir()).unwrap_or(false));
+    if let Some(d) = file.parent() { let _ = fs::create_dir_all(d); }
+    let _ = fs::write(file, serde_json::to_string(&m).unwrap_or_default());
+}
+
+/// A game looked for again (Steam Game Art Scraping).
+pub fn standin_unmark(done: &Path, folder: &Path) {
+    let key = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf()).to_string_lossy().replace('\\', "/").to_lowercase();
+    let mut list: Vec<String> = fs::read_to_string(done).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    let n = list.len();
+    list.retain(|k| k != &key);
+    if list.len() != n { let _ = fs::write(done, serde_json::to_string(&list).unwrap_or_default()); }
+}
+/// A game folder Steam's pictures were looked for once already (`done`, steam_standin).
+pub fn standin_mark_done(done: &Path, folder: &Path) {
+    let key = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf()).to_string_lossy().replace('\\', "/").to_lowercase();
+    let mut list: Vec<String> = fs::read_to_string(done).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+    if !list.contains(&key) { list.push(key); }
+    if let Some(d) = done.parent() { let _ = fs::create_dir_all(d); }
+    let _ = fs::write(done, serde_json::to_string(&list).unwrap_or_default());
+}
+
+/// One of a Steam game's pictures (header.jpg, library_hero.jpg...): where Steam
+/// keeps it (its older address, then the newer one of the games added lately).
+pub fn steam_pic_url(appid: &str, file: &str) -> String { format!("https://cdn.akamai.steamstatic.com/steam/apps/{appid}/{file}") }
+pub fn steam_pic(appid: &str, file: &str, to: &Path) -> bool { steam_pic_got(appid, file, to) == Some(true) }
+/// The same, telling apart Some(false): Steam answered and has no such picture,
+/// and None: it couldn't be asked. The games of the last years keep theirs only
+/// under an address with a code of their own in it (.../apps/<id>/<code>/library_hero.jpg):
+/// Steam's store tells it (IStoreBrowseService/GetItems' assets).
+pub fn steam_pic_got(appid: &str, file: &str, to: &Path) -> Option<bool> {
+    if appid.is_empty() || !appid.chars().all(|c| c.is_ascii_digit()) { return Some(false); }
+    let try_one = |url: &str| crate::net::download(url, to) && is_picture(to);
+    if try_one(&steam_pic_url(appid, file)) || try_one(&format!("{STEAM_ASSETS}steam/apps/{appid}/{file}")) { return Some(true); }
+    let (fmt, assets) = steam_assets(appid)?;
+    if !fmt.contains("${FILENAME}") { let _ = fs::remove_file(to); return Some(false); }
+    // (its name in Steam's list -- the logo isn't listed: it's kept beside the others)
+    let key = file.rsplit_once('.').map(|(n, _)| n).unwrap_or(file);
+    let mut names: Vec<String> = Vec::new();
+    for k in [format!("{key}_2x"), key.to_string()] { if let Some(n) = assets[k.as_str()].as_str() { if !n.is_empty() { names.push(n.to_string()); } } }
+    if names.is_empty() { names.push(file.to_string()); if key == "logo" { names.insert(0, "logo_2x.png".into()); } }
+    for n in names {
+        if try_one(&format!("{STEAM_ASSETS}{}", fmt.replace("${FILENAME}", &n))) { return Some(true); }
+    }
+    let _ = fs::remove_file(to);
+    Some(false)
+}
+const STEAM_ASSETS: &str = "https://shared.akamai.steamstatic.com/store_item_assets/";
+/// A Steam game's store pictures as its store lists them: the address's shape
+/// ("steam/apps/<id>/<code>/${FILENAME}?t=...") and the pictures' names. Kept
+/// for the session. None: Steam's store didn't answer.
+fn steam_assets(appid: &str) -> Option<(String, serde_json::Value)> {
+    static KEPT: std::sync::Mutex<Option<std::collections::HashMap<String, (String, serde_json::Value)>>> = std::sync::Mutex::new(None);
+    if let Some(v) = KEPT.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(appid).cloned()) { return Some(v); }
+    let input = serde_json::json!({ "ids": [{ "appid": appid.parse::<u64>().ok()? }], "context": { "language": "english", "country_code": "US" }, "data_request": { "include_assets": true } });
+    let v = crate::net::get_json(&format!("https://api.steampowered.com/IStoreBrowseService/GetItems/v1/?input_json={}", crate::net::enc(&input.to_string())), &[])?;
+    let item = v["response"]["store_items"].as_array().and_then(|a| a.first()).cloned().unwrap_or(serde_json::Value::Null);
+    let assets = item["assets"].clone();
+    let fmt = assets["asset_url_format"].as_str().unwrap_or("").to_string();
+    let got = (fmt, assets);
+    { let mut k = KEPT.lock().unwrap_or_else(|e| e.into_inner()); let m = k.get_or_insert_with(Default::default); if m.len() >= 500 { m.clear(); } m.insert(appid.to_string(), got.clone()); }
+    Some(got)
+}
+/// A logo's see-through border cut off (Steam's logos often have some, more on one
+/// side than the other, which puts the logo off-centre in its frame): the PNG
+/// saved again as tight as what's drawn in it. True when it was cut.
+pub fn trim_transparent(f: &Path) -> bool {
+    let Ok(img) = image::open(f) else { return false };
+    let img = img.to_rgba8();
+    let (w, h) = img.dimensions();
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0u32, 0u32);
+    for (x, y, p) in img.enumerate_pixels() {
+        if p[3] > 8 { x0 = x0.min(x); y0 = y0.min(y); x1 = x1.max(x); y1 = y1.max(y); }
+    }
+    // (nothing drawn, or nothing to cut)
+    if x1 < x0 || y1 < y0 || (x0 == 0 && y0 == 0 && x1 + 1 == w && y1 + 1 == h) { return false; }
+    let cut = image::imageops::crop_imm(&img, x0, y0, x1 - x0 + 1, y1 - y0 + 1).to_image();
+    let tmp = f.with_extension("trim.png");
+    if cut.save_with_format(&tmp, image::ImageFormat::Png).is_err() { let _ = fs::remove_file(&tmp); return false; }
+    fs::rename(&tmp, f).is_ok()
+}
+/// Whether a file saved as a picture is one (PNG, JPEG, WebP), not a page sent in its place.
+fn is_picture(f: &Path) -> bool {
+    let mut b = [0u8; 12];
+    let n = fs::File::open(f).and_then(|mut h| { use std::io::Read; h.read(&mut b) }).unwrap_or(0);
+    let ok = n >= 4 && (b.starts_with(&[0x89, b'P', b'N', b'G']) || b.starts_with(&[0xFF, 0xD8, 0xFF]) || (n >= 12 && &b[0..4] == b"RIFF" && &b[8..12] == b"WEBP"));
+    if !ok { let _ = fs::remove_file(f); }
+    ok
+}
+/// Whether the stand-in was already looked for for this game.
+#[cfg(test)]
+pub fn standin_done(done: &Path, folder: &Path) -> bool {
+    let key = fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf()).to_string_lossy().replace('\\', "/").to_lowercase();
+    fs::read_to_string(done).ok().and_then(|t| serde_json::from_str::<Vec<String>>(&t).ok()).map(|l| l.contains(&key)).unwrap_or(false)
 }
 
 /// Delete the game's current `kind` file(s) (it's being replaced or removed).
@@ -73,9 +362,12 @@ pub fn set_media(folder: &Path, kind: &str, src: Option<&Path>) -> Result<(), St
 
 pub const SRC_LOCAL: &str = "local";
 pub const SRC_DB: &str = "db";
+/// Steam's own pictures of a game recognized as a Steam game (steam_standin): in the place of
+/// anything found by itself (the program's icon, the databases'), never of a PS3 game's own or yours
+pub const SRC_STEAM: &str = "steam";
 pub const SRC_PS3: &str = "ps3";
 pub const SRC_USER: &str = "user";
-fn src_rank(s: &str) -> i32 { match s { SRC_LOCAL => 0, SRC_DB => 1, SRC_PS3 => 2, SRC_USER => 3, _ => 3 } }
+fn src_rank(s: &str) -> i32 { match s { SRC_LOCAL => 0, SRC_DB => 1, SRC_STEAM => 2, SRC_PS3 => 3, SRC_USER => 4, _ => 4 } }
 
 /// Where the game's `kind` came from: as recorded, else for a file made by
 /// an older version: its icon counts as the program's own, anything else as
@@ -92,6 +384,18 @@ pub fn art_source(folder: &Path, kind: &str) -> Option<String> {
 pub fn may_replace(folder: &Path, kind: &str, src: &str) -> bool {
     match art_source(folder, kind) { None => true, Some(cur) => src_rank(&cur) < src_rank(src) }
 }
+/// Steam Game Art Scraping or Game Art Database Scraping chosen (lib.rs game_art_steam /
+/// game_art_db): a game's missing icon (only the program's own), background or Trophy Collection
+/// banner is looked for again, even one removed before; a picture there is still only replaced as
+/// may_replace says (never yours).
+static FILL_MISSING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub fn set_fill_missing(on: bool) { FILL_MISSING.store(on, std::sync::atomic::Ordering::SeqCst); }
+fn filling() -> bool { FILL_MISSING.load(std::sync::atomic::Ordering::SeqCst) }
+/// The game has no file of this kind in its folder (an icon: only its program's own).
+pub fn missing(folder: &Path, kind: &str) -> bool { current(folder, kind).is_empty() }
+/// may_replace, or (Steam Game Art Scraping, Game Art Database Scraping) nothing there to replace.
+fn may_fill(folder: &Path, kind: &str, src: &str) -> bool { may_fill_with(folder, kind, src, filling()) }
+fn may_fill_with(folder: &Path, kind: &str, src: &str, filling: bool) -> bool { may_replace(folder, kind, src) || (filling && (kind == "icon" || kind == "background" || kind == "trophy") && missing(folder, kind)) }
 /// PlayStation®Home (it starts from PSN > PlayStation®Home, with the system's
 /// own look): no art is ever put in its folder by itself.
 /// (its name however written: PlayStation®Home, playstation_home, PS3 Home,
@@ -117,16 +421,22 @@ pub fn is_home(folder: &Path) -> bool {
     v["titleId"].as_str().map(|id| HOME_TITLE_IDS.contains(&id.trim().to_uppercase().as_str())).unwrap_or(false)
         || is_home_title(v["title"].as_str().unwrap_or_else(|| folder.file_name().and_then(|n| n.to_str()).unwrap_or("")))
 }
-/// A recognized game the game databases haven't been asked about yet (with a
-/// key and the internet) and that still has something they could fill in:
-/// Game Recognition (with Automatic Scraping on) gets its art.
+/// A game Game Art Database Scraping looks up (Game Settings > Game Art Databases): one with no
+/// icon, or only its program's own (as recorded when it was put in -- Steam's own icon for a game
+/// started through Steam, say), or with no background, whatever was found or removed before. A
+/// game with an icon not its program's and a background is skipped (its video, name and console
+/// too). Never a PS3 game or PlayStation®Home.
 pub fn needs_db_art(folder: &Path, ffmpeg_now: bool) -> bool {
-    if is_home(folder) { return false; }
+    if is_home(folder) || is_ps3(folder) { return false; }
     // (art that was put in whole, uncut, because FFmpeg wasn't there: made
     // again now that it is)
     if ffmpeg_now && !uncut_kinds(folder).is_empty() { return true; }
-    if meta_of(folder)["dbScraped"].as_bool() == Some(true) { return false; }
-    ["icon", "background", "preview"].iter().any(|k| may_replace(folder, k, SRC_DB))
+    missing(folder, "icon") || missing(folder, "background") || meta_of(folder)["artSource"]["icon"].as_str() == Some(SRC_LOCAL)
+}
+/// A PS3 game (its console, its Title ID or its key): its own art and details are kept.
+pub fn is_ps3(folder: &Path) -> bool {
+    let m = meta_of(folder);
+    m["console"].as_str().map(|c| c.to_uppercase().contains("PS3")).unwrap_or(false) || m["ps3Key"].is_string() || m["titleId"].is_string()
 }
 
 /// The game's database art that needed FFmpeg (to be cut to its shape, or
@@ -152,14 +462,11 @@ pub fn mark_source(folder: &Path, kind: &str, src: &str) {
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ScrapeSettings {
-    /// get the art of newly recognized games by itself
-    pub auto: Option<bool>,
     pub sgdb_key: String,
     pub tgdb_key: String,
     pub rawg_key: String,
 }
 impl ScrapeSettings {
-    pub fn auto_on(&self) -> bool { self.auto.unwrap_or(true) }
     pub fn any_key(&self) -> bool { [&self.sgdb_key, &self.tgdb_key, &self.rawg_key].iter().any(|k| !k.trim().is_empty()) }
 }
 
@@ -406,10 +713,24 @@ pub fn console_for(platforms: &[String]) -> Option<String> {
 /// `screen`: the shape (width / height) of the app's picture, which the
 /// background is made to fit.
 pub fn scrape(folder: &Path, term: &str, s: &ScrapeSettings, ffmpeg: Option<&Path>, replace: bool, screen: f64) -> ScrapeResult {
+    scrape_with(folder, term, s, ffmpeg, replace, screen, false)
+}
+/// The game renamed by hand: looked up again under its new name. What the databases find
+/// replaces what they (or nothing but the program's own icon) had given it; art chosen by
+/// hand and a PS3 game's own stay, the name just typed stays, and with nothing found the
+/// game keeps everything it had.
+pub fn scrape_renamed(folder: &Path, term: &str, s: &ScrapeSettings, ffmpeg: Option<&Path>, screen: f64) -> ScrapeResult {
+    scrape_with(folder, term, s, ffmpeg, false, screen, true)
+}
+/// Whether a kind of art may be replaced after a rename: none yet, the program's own icon or the databases'.
+pub fn renamed_may_replace(folder: &Path, kind: &str) -> bool {
+    match art_source(folder, kind) { None => true, Some(cur) => src_rank(&cur) <= src_rank(SRC_DB) }
+}
+fn scrape_with(folder: &Path, term: &str, s: &ScrapeSettings, ffmpeg: Option<&Path>, replace: bool, screen: f64, renamed: bool) -> ScrapeResult {
     let mut res = ScrapeResult::default();
     let term = crate::gamesrc::clean_title(term);
     if term.trim().is_empty() { res.message = "No name to look for.".into(); return res; }
-    if !s.any_key() { res.message = "No game database is set up (Settings > Game Databases).".into(); return res; }
+    if !s.any_key() { res.message = "No game database is set up (Game Settings > Game Art Databases).".into(); return res; }
     if !online() { res.message = "No internet connection.".into(); return res; }
     // (PlayStation®Home keeps the system's own look: found by itself, no art)
     if !replace && is_home(folder) { return res; }
@@ -418,8 +739,8 @@ pub fn scrape(folder: &Path, term: &str, s: &ScrapeSettings, ffmpeg: Option<&Pat
     // (a PS3 game's own art always stays over the databases', even with Get
     // Art Online; only Game Settings changes it)
     let uncut = if ffmpeg.is_some() { uncut_kinds(folder) } else { Vec::new() };
-    let can = |k: &str| if replace { art_source(folder, k).as_deref() != Some(SRC_PS3) }
-        else { may_replace(folder, k, SRC_DB) || (uncut.iter().any(|u| u == k) && art_source(folder, k).as_deref() == Some(SRC_DB)) };
+    let can = |k: &str| if renamed { renamed_may_replace(folder, k) } else if replace { art_source(folder, k).as_deref() != Some(SRC_PS3) }
+        else { may_fill(folder, k, SRC_DB) || (uncut.iter().any(|u| u == k) && art_source(folder, k).as_deref() == Some(SRC_DB)) };
     // (what's put in as it came, for want of FFmpeg: made again once it's there)
     let mut needs_ff: Vec<&str> = Vec::new();
     // (a kind that's no longer set by the databases isn't waiting for FFmpeg)
@@ -518,16 +839,17 @@ pub fn scrape(folder: &Path, term: &str, s: &ScrapeSettings, ffmpeg: Option<&Pat
     }
     let _ = fs::remove_dir_all(&tmpdir);
     let mut patch: Vec<(&str, serde_json::Value)> = Vec::new();
-    if let Some(n) = f.name.as_ref().filter(|n| !n.trim().is_empty()) {
+    // (renamed by hand: the name typed stays, and so does its console)
+    if let Some(n) = f.name.as_ref().filter(|n| !renamed && !n.trim().is_empty()) {
         patch.push(("title", serde_json::Value::String(n.trim().to_string())));
         res.name = Some(n.trim().to_string());
     }
     // the console it belongs to (a PS3 game found by itself stays PS3)
-    if let Some(c) = console_for(&f.platforms).filter(|_| replace || !ps3_game) {
+    if let Some(c) = console_for(&f.platforms).filter(|_| !renamed && (replace || !ps3_game)) {
         patch.push(("console", serde_json::Value::String(c.clone())));
         res.console = Some(c);
     }
-    // (asked: Game Recognition doesn't ask about it again; only what was put
+    // (asked: Game Art Database Scraping doesn't ask about it again; only what was put
     // in uncut for want of FFmpeg is made again, once FFmpeg is there)
     patch.push(("dbScraped", serde_json::Value::Bool(true)));
     let mut waiting: Vec<String> = needs_ff.iter().filter(|k| match **k { "icon" => res.icon, "background" => res.background, _ => res.preview }).map(|k| k.to_string()).collect();
@@ -600,6 +922,36 @@ mod tests {
         assert_eq!(console_for(&["PlayStation 4".into()]).as_deref(), Some("PS4"));
     }
     #[test]
+    fn trophy_banner_looked_for_once() {
+        let d = std::env::temp_dir().join(format!("xmb-banner-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d); fs::create_dir_all(&d).unwrap();
+        fs::write(d.join("game.json"), "{\"title\":\"G\"}").unwrap();
+        // none yet: Steam's looked for; once Steam answered, not again
+        assert!(banner_due(&d));
+        banner_looked(&d);
+        assert!(!banner_due(&d));
+        // (Steam Game Art Scraping: one Steam had none of before, looked for again)
+        assert!(banner_due_with(&d, true));
+        // one dropped in (trophy.*): yours, never looked for, never replaced
+        let e = d.join("e"); fs::create_dir_all(&e).unwrap(); fs::write(e.join("game.json"), "{}").unwrap();
+        fs::write(e.join("Trophy.PNG"), b"x").unwrap();
+        assert!(!banner_due(&e) && !may_replace(&e, "trophy", SRC_STEAM));
+        // chosen in Game Information, then removed: by itself, stays removed
+        let src = d.join("pic.jpg"); fs::write(&src, b"y").unwrap();
+        let f = d.join("f"); fs::create_dir_all(&f).unwrap(); fs::write(f.join("game.json"), "{}").unwrap();
+        set_media(&f, "trophy", Some(&src)).unwrap(); mark_source(&f, "trophy", SRC_USER);
+        assert!(f.join("trophy.jpg").is_file() && !banner_due(&f));
+        set_media(&f, "trophy", None).unwrap();
+        assert!(!f.join("trophy.jpg").exists() && !banner_due(&f));
+        // (Steam Game Art Scraping: one you removed is looked for again, as an icon or background is)
+        assert!(banner_due_with(&f, true) && may_fill_with(&f, "trophy", SRC_STEAM, true));
+        assert!(!may_fill_with(&f, "trophy", SRC_STEAM, false));
+        // a PS3 game: its own ICON0 stays its picture there
+        let g = d.join("g"); fs::create_dir_all(&g).unwrap(); fs::write(g.join("game.json"), "{\"titleId\":\"BLUS30001\"}").unwrap();
+        assert!(!banner_due(&g));
+        let _ = fs::remove_dir_all(&d);
+    }
+    #[test]
     fn art_sources_rank() {
         let d = std::env::temp_dir().join(format!("xmb-artsrc-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d); fs::create_dir_all(&d).unwrap();
@@ -662,5 +1014,70 @@ mod home_tests {
         fs::write(d.join("game.json"), r#"{"title":"Some Game","titleId":"BLES00002","launch":"x.lnk"}"#).unwrap();
         assert!(!is_home(&d));
         let _ = fs::remove_dir_all(&d);
+    }
+    #[test]
+    fn steam_standin_only_where_it_belongs() {
+        let root = std::env::temp_dir().join(format!("mx_standin_{}", std::process::id()));
+        let games = root.join("Games"); let done = root.join("data").join("steam_art.json");
+        let _ = fs::create_dir_all(&games);
+        // (a PS3 game, a game with its own pictures, a game outside the system's folder, a bad ID: nothing)
+        let ps3 = games.join("ps3"); fs::create_dir_all(&ps3).unwrap(); fs::write(ps3.join("game.json"), r#"{"console":"PS3"}"#).unwrap();
+        assert!(!steam_standin(&root, &done, &ps3, "10"));
+        let own = games.join("own"); fs::create_dir_all(&own).unwrap(); fs::write(own.join("icon.png"), b"x").unwrap(); fs::write(own.join("background.jpg"), b"x").unwrap();
+        assert!(!steam_standin(&root, &done, &own, "10"));
+        assert!(fs::read(own.join("icon.png")).unwrap() == b"x");
+        let out = std::env::temp_dir().join(format!("mx_standin_out_{}", std::process::id())); fs::create_dir_all(&out).unwrap();
+        assert!(!steam_standin(&root, &done, &out, "10"));
+        assert!(!steam_standin(&root, &done, &own, "1a"));
+        // (done once for a game: not again, a picture removed afterwards isn't put back)
+        fs::create_dir_all(done.parent().unwrap()).unwrap();
+        let key = fs::canonicalize(&own).unwrap().to_string_lossy().replace('\\', "/").to_lowercase();
+        fs::write(&done, serde_json::to_string(&vec![key]).unwrap()).unwrap();
+        assert!(standin_done(&done, &own) && !standin_done(&done, &ps3));
+        fs::remove_file(own.join("icon.png")).unwrap();
+        assert!(!steam_standin(&root, &done, &own, "10"));
+        assert!(current(&own, "icon").is_empty());
+        // (a game marked as looked for by Game Recognition; a page saved in a picture's place isn't one)
+        let other = games.join("other"); fs::create_dir_all(&other).unwrap();
+        assert!(!standin_done(&done, &other)); standin_mark_done(&done, &other); assert!(standin_done(&done, &other) && standin_done(&done, &own));
+        let f = root.join("p.png");
+        fs::write(&f, [0x89, b'P', b'N', b'G', 13, 10, 26, 10]).unwrap(); assert!(is_picture(&f));
+        fs::write(&f, [0xFF, 0xD8, 0xFF, 0xE0]).unwrap(); assert!(is_picture(&f));
+        fs::write(&f, b"<!DOCTYPE html><html>").unwrap(); assert!(!is_picture(&f) && !f.exists());
+        // (a logo with a see-through border, more on the left and the top: cut to what's drawn)
+        let mut im = image::RgbaImage::new(40, 20);
+        for y in 8..18 { for x in 20..36 { im.put_pixel(x, y, image::Rgba([255, 0, 0, 255])); } }
+        im.save(&f).unwrap();
+        assert!(trim_transparent(&f));
+        let back = image::open(&f).unwrap();
+        assert_eq!((back.width(), back.height()), (16, 10));
+        assert!(!trim_transparent(&f));
+        // (which games get Steam's pictures looked for: new or missing one; again, when Steam's could still replace one)
+        let none: std::collections::HashSet<String> = Default::default();
+        let mut new: std::collections::HashSet<PathBuf> = Default::default();
+        let full = games.join("full"); fs::create_dir_all(&full).unwrap();
+        fs::write(full.join("game.json"), r#"{"title":"Full","artSource":{"icon":"local","background":"db"},"trophyLooked":true}"#).unwrap();
+        fs::write(full.join("icon.png"), b"x").unwrap(); fs::write(full.join("background.jpg"), b"x").unwrap();
+        let mine = games.join("mine"); fs::create_dir_all(&mine).unwrap();
+        fs::write(mine.join("game.json"), r#"{"title":"Mine","artSource":{"icon":"user"},"trophyLooked":true}"#).unwrap(); fs::write(mine.join("icon.png"), b"x").unwrap();
+        let done_steam = games.join("steamed"); fs::create_dir_all(&done_steam).unwrap();
+        fs::write(done_steam.join("game.json"), r#"{"title":"S","artSource":{"icon":"steam","background":"steam"},"trophyLooked":true}"#).unwrap();
+        fs::write(done_steam.join("icon.png"), b"x").unwrap(); fs::write(done_steam.join("background.jpg"), b"x").unwrap();
+        assert!(!steam_art_wanted(&full, false, &none, &new), "complete art: not looked for by itself");
+        assert!(steam_art_wanted(&mine, false, &none, &new), "only an icon of yours: its background looked for");
+        assert!(!steam_art_wanted(&ps3, false, &none, &new) && !steam_art_wanted(&ps3, true, &none, &new), "never a PS3 game");
+        new.insert(full.clone()); assert!(steam_art_wanted(&full, false, &none, &new), "a game just recognized: looked for");
+        let key = fs::canonicalize(&mine).unwrap().to_string_lossy().replace('\\', "/").to_lowercase();
+        let done_mine: std::collections::HashSet<String> = [key].into_iter().collect();
+        assert!(!steam_art_wanted(&mine, false, &done_mine, &new), "looked for once already: not again by itself");
+        assert!(steam_art_wanted(&mine, true, &done_mine, &new) && steam_art_wanted(&full, true, &none, &Default::default()), "Game Recognition, no game database: again");
+        assert!(!steam_art_wanted(&done_steam, true, &none, &new), "Steam's pictures in already: nothing to look for");
+        // (its Trophy Collection banner not looked for yet -- a game looked for before there were
+        // banners --: looked for, though its other pictures were; one there: not)
+        fs::write(done_steam.join("game.json"), r#"{"title":"S","artSource":{"icon":"steam","background":"steam"}}"#).unwrap();
+        assert!(steam_art_wanted(&done_steam, false, &done_mine, &new) && steam_art_wanted(&mine, false, &done_mine, &new) == false);
+        fs::write(done_steam.join("trophy.jpg"), b"x").unwrap();
+        assert!(!steam_art_wanted(&done_steam, true, &none, &new), "a banner there: not looked for");
+        let _ = fs::remove_dir_all(&root); let _ = fs::remove_dir_all(&out);
     }
 }

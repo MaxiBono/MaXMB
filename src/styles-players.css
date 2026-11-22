@@ -1,0 +1,506 @@
+/* MaXMB's look, part 6 of 8: the Video Player, the game options panel and Information screen, and the Photo Viewer. The parts are loaded one after another, in this order
+   (index.html), as one stylesheet. */
+/* ---------- video player (PS3 layout, 1920x1080 references) ---------- */
+.vp { position: absolute; inset: 0; overflow: hidden; background: #000; color: #fff; }
+/* sized + centred by fit.js (Screen Mode) */
+.vp-video { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 100%; height: 100%; background: #000; }
+/* subtitles (drawn by the player, see _applySub): no box behind them, in the
+   font in use and the Text Color, with a black outline that never changes */
+.vp-video::cue { color: transparent; background: transparent; text-shadow: none; }
+.vp-subs { position: absolute; left: 5vw; right: 5vw; bottom: 7.5vh; z-index: 3; text-align: center; pointer-events: none;
+  font-family: var(--ui-font); font-size: 3.4vh; line-height: 1.25; color: var(--text, #fff); background: none; }
+.vp-cue { display: inline-block; max-width: 100%; white-space: normal;
+  text-shadow: -0.14vh -0.14vh 0 #000, 0.14vh -0.14vh 0 #000, -0.14vh 0.14vh 0 #000, 0.14vh 0.14vh 0 #000,
+    0 0 0.3vh #000, 0 0 0.3vh #000 !important;
+  -webkit-text-stroke: 0.08vh #000; paint-order: stroke fill; }
+.vp-cue + .vp-cue { display: block; }
+/* SELECT: top band 0-130 px, bottom band 950-1080 px (black, ~64 %) */
+.vp-top, .vp-bottom { position: absolute; left: 0; right: 0; height: 12.04vh; background: rgba(0,0,0,0.64);
+  opacity: 0; visibility: hidden; transition: opacity .45s ease, visibility 0s linear .45s;
+  pointer-events: none; font-size: 2.31vh; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.vp-top { top: 0; } .vp-bottom { bottom: 0; }
+.vp-top.on, .vp-bottom.on { opacity: 1; visibility: visible; transition: opacity .2s ease, visibility 0s; }
+.vp-top > *, .vp-bottom > * { position: absolute; top: 9.9vh; transform: translateY(-50%); white-space: nowrap; }
+.vp-filmicon { left: 5.5vw; height: 4.6vh; width: auto; }
+.vp-title { left: 8.54vw; max-width: 46vw; overflow: hidden; }
+.vp-fmt { display: flex; align-items: center; gap: 1.25vw; font-size: 2.2vh; }
+.vp-afmt { left: 56.25vw; }
+.vp-vfmt { right: 5.2vw; gap: 2vw; }
+.vp-akbps, .vp-vkbps { display: inline-block; min-width: 5.6vw; text-align: right; }
+.vp-badge { height: 2.35vh; width: auto; }
+.vp-bottom > * { top: 2.31vh; }
+.vp-chapter { left: 45vw; }
+.vp-bottom .vp-time { left: 58.07vw; }
+.vp-barwrap { left: 65vw; width: 22.92vw; height: 1.11vh; }
+.vp-barwrap .vp-bar { position: absolute; inset: 0; width: auto; height: auto; margin: 0; }
+/* Go To: the green arrow under the bar at the time being chosen */
+.vp-target { position: absolute; top: 100%; margin-top: 0.15vh; height: 1.11vh; width: auto; transform: translateX(-50%); display: none; }
+.vp-target.on { display: block; }
+.vp-bottom .vp-total { left: 88.85vw; }
+/* Go To: the time pulses like a selected title; while editing, the field
+   being changed pulses and has the up / down arrows */
+.vp-time.glow { animation: xmbLabelGlow 1.7s ease-in-out infinite; }
+.vp-gf { position: relative; display: inline-block; }
+.vp-gf.on { animation: xmbLabelGlow 1.7s ease-in-out infinite; }
+.vp-gup, .vp-gdn { position: absolute; left: 50%; transform: translateX(-50%); height: 1.11vh; width: auto; }
+.vp-gup { bottom: 100%; margin-bottom: 0.1vh; }
+.vp-gdn { top: 100%; margin-top: 0.1vh; }
+.vp.goto .vp-chapter { visibility: hidden; }
+/* status icons at the lower left. Pause glyph x 124-152 / y 959-991 (the
+   74 px textures drawn at 0.86); the number beside it (×10, 90); Repeat always
+   at x 272-343. They fade out like the Music Player's. */
+.vp-status { position: absolute; left: 5.47vw; top: 90.28vh; height: 5.93vh; transform: translateY(-50%);
+  display: flex; align-items: center; opacity: 0; transition: opacity .6s ease; pointer-events: none; }
+.vp-status.on { opacity: 1; transition: opacity .15s ease; }
+.vp-st-main { display: inline-flex; align-items: center; }
+.vp-st { height: 5.93vh; width: auto; }
+.vp-st-num { height: 2.9vh; width: auto; margin-left: 0.1vw; }
+.vp-st-rep { position: absolute; left: 8.1vw; top: 50%; transform: translateY(-50%); height: 6.15vh; width: auto;
+ }
+/* the small box above them: "♪ 1 Right", "Zoom", "Repeat On" (x 99-240, centre y 923) */
+.vp-box { position: absolute; left: 5.15vw; top: 85.5vh; transform: translateY(-50%); display: none; align-items: center;
+  gap: 0.45vw; height: 3.4vh; padding: 0 0.6vw; border-radius: 0.4vh; box-sizing: border-box;
+  background: rgba(24,24,24,0.88); border: 1px solid rgba(255,255,255,0.22);
+  font-size: 1.95vh; white-space: nowrap; text-shadow: none; }
+.vp-box.on { display: flex; }
+.vp-box img { height: 2.9vh; width: auto; margin-left: -0.3vw; }
+.vp-note { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 2.6vh; display: none;
+  text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
+.vp-note.on { display: block; }
+/* △ panel (PSP-style capture): centre x 563, rows at y 413 / 478 / 543 */
+.vp-cluster { left: 29.3vw; top: 34.85vh; }
+.vp-cluster .mp2-btn.btn-off { opacity: 0.4; }   /* (not "dim": that is the brightness layer's class) */
+/* Scene Search: lower band from 63.8 %, selected thumb fixed at x 45.7 % */
+.vp-layer { position: absolute; inset: 0; pointer-events: none; }
+.vp-scene { position: absolute; left: 0; right: 0; top: 63.8vh; bottom: 0; background: rgba(40,40,40,0.55); }
+.vp-scene-label { position: absolute; left: 45.7vw; width: 11.65vw; top: 1.6vh; text-align: center; font-size: 2.2vh; white-space: nowrap; }
+.vp-arrows { position: absolute; left: 50%; top: 50%; }
+.vp-arrows img { position: absolute; left: 0; transform: translateX(-50%); height: 1.11vh; width: auto; }
+.vp-arrows img.up { top: -1.9vh; }
+.vp-arrows img.dn { top: 0.95vh; }
+.vp-thumbs { position: absolute; left: 0; right: 0; top: 7.2vh; height: 11.5vh; }
+.vp-thumb { position: absolute; top: 0; left: calc(45.7vw + var(--k) * 12.25vw); width: 11.65vw; height: 11.5vh;
+  background: #111; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.25); overflow: hidden; }
+.vp-thumb.sel { border: 0.3vh solid #fff; overflow: visible; animation: vpThumbGlow 1.7s ease-in-out infinite; }
+/* the scene you're on glows all round, at the What's New outline's pace */
+@keyframes vpThumbGlow {
+  0%, 100% { box-shadow: 0 0 0.6vh rgba(255,255,255,0.45); }
+  50% { box-shadow: 0 0 1.6vh rgba(255,255,255,1), 0 0 3vh rgba(255,255,255,0.6); }
+}
+.vp-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vp.scene .vp-status, .vp.scene .vp-box, .vp.scene .vp-bottom, .vp.scene .vp-top, .vp.scene .vp-cluster { display: none; }
+.vp-scene-name { position: absolute; left: 45.7vw; top: 20.4vh; display: flex; align-items: center; gap: 0.35vw; font-size: 2.2vh; }
+.vp-ssbtn { height: 2.78vh; width: auto; }
+.vp-scene-bar { position: absolute; left: 0; right: 0; top: 25.4vh; height: 3vh; font-size: 2.1vh; }
+.vp-scene-bar > * { position: absolute; top: 50%; transform: translateY(-50%); margin: 0; }
+.vp-scene-bar .vp-time { left: 60.4vw; }
+.vp-scene-bar .vp-bar { left: 66.3vw; width: 22.3vw; }
+.vp-scene-bar .vp-total { left: 90.4vw; }
+/* confirmation (Change Icon / Delete), from the 1920x1080 capture: rules at
+   y 199 / 879, picture x 427-853 / y 420-660, text from x 891 (24 px, 34 px
+   lines), Yes / No centred under the text at y 610, Enter x 724 / Back x 1155 */
+.vp-dlg { position: absolute; inset: 0; background: rgba(0,0,0,0.42); font-size: 2.32vh; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.vp-dlg::before, .vp-dlg::after { content: ""; position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.75); }
+.vp-dlg::before { top: 18.43vh; } .vp-dlg::after { top: 81.4vh; }
+.vp-dlg-thumb { position: absolute; left: 22.24vw; top: 38.9vh; width: 22.19vw; height: 22.22vh; overflow: hidden; background: #000; }
+.vp-dlg-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vp-dlg-body { position: absolute; left: 50%; top: 41.85vh; transform: translateX(-50%); }
+.vp-dlg-thumb + .vp-dlg-body { left: 46.4vw; transform: none; }
+.vp-dlg-text { line-height: 3.15vh; text-shadow: 0 1px 3px rgba(0,0,0,0.7); white-space: nowrap; }
+.vp-dlg-opts { display: flex; justify-content: center; gap: 6.3vw; margin-top: 6.5vh; }
+.vp-dlg-opt { opacity: 0.92; text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
+.vp-dlg-opt.sel { opacity: 1; font-weight: 600; animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.vp-dlg-foot { position: absolute; left: 37.7vw; top: 84vh; transform: translateY(-50%); display: flex; gap: 18.1vw; }
+.vp-dlg-foot > span { display: inline-flex; align-items: center; gap: 0.75vw; }
+.vp.dlg .vp-status, .vp.dlg .vp-box, .vp.dlg .vp-bottom, .vp.dlg .vp-top, .vp.dlg .vp-cluster { display: none; }
+/* Subtitle Options list over the video */
+body.vp-form .form { z-index: 85; }
+
+/* Music Player: Delete confirmation (same screen as the Video Player's) */
+.musicplayer.dlg > :not(.mp-dlg-host) { visibility: hidden; }
+.mp-dlg-host { position: absolute; inset: 0; z-index: 5; }
+.mp-dlg-host .vp-dlg { background: rgba(0,0,0,0.25); }
+.mp-note { position: absolute; left: 6.4vw; top: 72vh; z-index: 4; }
+.musicplayer .vp-box { color: #fff; }
+
+/* ---------- game options (△) panel — Game captures (E3363-E3366) ---------- */
+.gamemenu { position: fixed; inset: 0; z-index: 60; display: none; pointer-events: none; }
+.gamemenu.show { display: block; animation: gmIn .15s ease-out; }
+/* opening: the panel fades in where it is, quickly; so does a mini menu
+   (Sort By / Group Content) as it opens */
+@keyframes gmIn { from { opacity: 0; } to { opacity: 1; } }
+.gm-subwrap { position: absolute; inset: 0; }
+.gm-subwrap.gm-fadein { animation: gmIn .15s ease-out; }
+/* closing: the panel, or its mini menu, fades out where it is */
+@keyframes gmOut { from { opacity: 1; } to { opacity: 0; } }
+.gamemenu.show.closing { animation: gmOut .15s ease-in forwards; pointer-events: none; }
+/* no background: a lighter area right of a thin line at x 1253; over the
+   game's background: a stripe fading to the right. Both in the Background
+   Color, lighter (--menu-rgb, set with the colour) */
+.gamemenu::before { content: ""; position: absolute; top: 0; bottom: 0; left: 65.3vw; right: 0;
+  background: linear-gradient(90deg, rgba(var(--menu-rgb, 255,255,255),0.3) 0%, rgba(var(--menu-rgb, 255,255,255),0.2) 35%, rgba(var(--menu-rgb, 255,255,255),0.16) 100%); }
+.gm-line { position: absolute; top: 0; bottom: 0; left: 65.3vw; width: 1px; background: rgba(255,255,255,0.75);
+  box-shadow: 0 0 0.4vh rgba(255,255,255,0.4); }
+.gamemenu.bg::before { background: linear-gradient(90deg, rgba(var(--menu-rgb, 200,80,60),0.85) 0%, rgba(var(--menu-rgb, 200,80,60),0.6) 40%, rgba(var(--menu-rgb, 200,80,60),0) 100%);
+  right: auto; width: 17vw; }
+.gamemenu.bg .gm-line { opacity: 0.45; }
+.gm-top { position: absolute; left: 66.2vw; top: 31.7vh; }
+.gm-lower { position: absolute; left: 66.2vw; top: 51.5vh; }
+.gm-item { position: relative; height: 3.4vh; width: 17.6vw; display: flex; align-items: center; gap: 0.35vw;
+  font-size: 2.25vh; white-space: nowrap; text-shadow: 0 0.12vh 0.35vh rgba(0,0,0,0.45); pointer-events: auto; cursor: pointer; }
+.gm-item + .gm-item { margin-top: 0; }
+.gm-top .gm-item:nth-child(2) { margin-top: 0.35vh; }
+.gm-item.sel .gm-label { animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+.gm-item.cur .gm-label::after { content: " \2713"; }
+.gm-sq { height: 1.7vh; width: auto; }
+.gm-plus { height: 1.8vh; width: auto; }
+.gm-arrow { position: absolute; left: 18vw; height: 1.35vh; width: auto; filter: drop-shadow(0 0.1vh 0.2vh rgba(0,0,0,0.4)); }
+.gm-more { display: block; height: 1.1vh; width: auto; margin-left: -0.3vw; }
+/* the console's Color menu (Theme Settings capture): the rule at x 1325, the
+   options in one column from y 147 @1080: "Original" as text, then 27 px
+   squares 40 px apart with a soft shadow, Custom Color… at the end */
+.gamemenu.swatches::before, .gamemenu.swatches .gm-line { left: 69vw; }
+/* every option menu inside Settings: the same rule position */
+.gamemenu.setline::before, .gamemenu.setline .gm-line { left: 69vw; }
+.gamemenu.setline .gm-lower { left: 69.9vw; }
+.gamemenu.setline .gm-item { width: 13.9vw; }
+.gm-swatch-list { position: absolute; left: 69.8vw; top: 12.4vh; }
+.gamemenu.swatches .gm-item { height: 3.7vh; width: auto; }
+.gm-swatch { display: block; width: 2.5vh; height: 2.5vh; box-shadow: 0.25vh 0.3vh 0.35vh rgba(0,0,0,0.55);
+  transition: transform .15s ease, box-shadow .15s ease; }
+/* the focused square: a little bigger, glowing in time with the titles */
+.gm-item.gm-sw.sel .gm-swatch { transform: scale(1.18); animation: swatchGlow 3.4s ease-in-out infinite; }
+@keyframes swatchGlow {
+  0%, 100% { box-shadow: 0.25vh 0.3vh 0.35vh rgba(0,0,0,0.55), 0 0 0.3vh rgba(255,255,255,0.4); }
+  50% { box-shadow: 0.25vh 0.3vh 0.35vh rgba(0,0,0,0.55), 0 0 0 0.2vh rgba(255,255,255,0.9), 0 0 1.4vh rgba(255,255,255,0.75); }
+}
+.gm-more.up { position: absolute; top: -1.6vh; }
+/* an entry that can't be used right now (Auto Sign-In Off once used, IMG_3600) */
+/* (the same dimmed look as Save Password when Auto Sign-In is on: dark words,
+   still glowing when the cursor is on them) */
+.gm-item.dis .gm-label { color: rgba(48,52,58,0.78); text-shadow: 0 0.1vh 0.25vh rgba(255,255,255,0.22); }
+.gm-item.dis.sel .gm-label { animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+/* a △ panel open: the background behind the XMB goes blurred */
+.tri-blur { position: fixed; inset: 0; z-index: 5; pointer-events: none; display: none;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+body:has(.gamemenu.show) .tri-blur { display: block; }
+/* the black-screen fix: the full-screen menus (and the △ panel) no longer blur
+   what's behind them with backdrop-filter (WebView2 could lose that picture
+   and show black when the background finished loading under an open menu);
+   the background layers themselves are blurred instead, slightly enlarged so
+   the blurred edges don't darken */
+#p3tbg, #wallpaper, #bgtint, #overlay, #wavegl, #wave { transition: filter .25s ease, scale .25s ease; }
+/* (the Music Player shows the background as it is, like the Visualizer Wave;
+   its own dialogs, such as Delete, blur it like the other dialogs) */
+/* Every blurred background is blurred the same, once: the full-screen menus,
+   the △ panel, Trophy Collection, Settings' and Account Management's menus
+   (body.lvl-blur), however one opens over another; the browser's only with
+   Menu Blur: All (body.menublur-all), else only a menu opened over it */
+body:is(.menu-open, .lvl-blur, :has(.loading.show), :has(.colorpick.show), :has(.gamemenu.show)):not(.pv-open):not(.video-open):not(.mpvis):not(.nomenublur):not(:has(.musicplayer.show:not(.dlg))):not(.browser-open:not(.menublur-all):not(:has(.form.show, .loading.show, .colorpick.show))) :is(#p3tbg, #wallpaper, #bgtint, #overlay, #wavegl, #wave) {
+  /* (6 px: the softness of the console's high quality captures, 45D09CD2 /
+     420AD9EF / EA017303, measured by their detail against ours at each strength) */
+  filter: blur(6px); scale: 1.02; }
+body:is(.menu-open, .lvl-blur, :has(.loading.show), :has(.colorpick.show), :has(.browser.show), :has(.gamemenu.show)):not(.pv-open):not(.video-open):not(.mpvis) :is(.form, .loading, .colorpick, .browser, .gamedlg .vp-dlg, .tri-blur, .sidemenu) {
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+body.nomenublur .tri-blur { display: none !important; }
+/* Sort By / Group Content mini menus (0738C2ED, IMG_3551 / IMG_3552): the panel
+   (and the XMB with it) moves left so its rule sits at x 930; the options
+   open in a second panel whose rule is at x 1320, the option in use level with
+   its row, ◄ beside the row; the band behind the game goes */
+/* (the panel's shading moves with its rule and its words, in one go: they're
+   drawn again in their new place at once, and a shading sliding over on its
+   own lagged behind them for a moment, its edge out of line) */
+.gamemenu::before, .gamemenu .gm-line, .gm-top, .gm-lower { transition: none; }
+/* (the first panel's shading fades out before the second panel's rule) */
+.gamemenu.sub::before { left: 48.44vw; right: auto; width: 15.6vw;
+  background: linear-gradient(90deg, rgba(var(--menu-rgb, 255,255,255),0.3) 0%, rgba(var(--menu-rgb, 255,255,255),0.18) 45%, rgba(var(--menu-rgb, 255,255,255),0) 100%); }
+.gamemenu.sub.bg::before { width: 15.6vw;
+  background: linear-gradient(90deg, rgba(var(--menu-rgb, 200,80,60),0.85) 0%, rgba(var(--menu-rgb, 200,80,60),0.6) 40%, rgba(var(--menu-rgb, 200,80,60),0) 100%); }
+.gamemenu.sub .gm-line { left: 48.44vw; }
+.gamemenu.sub .gm-line.gm-line2 { left: 68.75vw; }
+.gamemenu.sub .gm-top, .gamemenu.sub .gm-lower { left: 49.34vw; }
+.gamemenu.sub .gm-arrow { display: none; }
+.gm-sub-bg { position: absolute; top: 0; bottom: 0; left: 68.75vw; right: 0;
+  background: linear-gradient(90deg, rgba(var(--menu-rgb, 255,255,255),0.3) 0%, rgba(var(--menu-rgb, 255,255,255),0.2) 35%, rgba(var(--menu-rgb, 255,255,255),0.16) 100%); }
+.gamemenu.bg .gm-sub-bg { right: auto; width: 17vw;
+  background: linear-gradient(90deg, rgba(var(--menu-rgb, 200,80,60),0.85) 0%, rgba(var(--menu-rgb, 200,80,60),0.6) 40%, rgba(var(--menu-rgb, 200,80,60),0) 100%); }
+.gm-subl { position: absolute; left: 69.65vw; }
+.gm-subl .gm-item { height: 3.7vh; width: 15vw; }
+.gm-tri { font-size: 1.5vh; margin-left: 0.45vw; position: relative; top: -0.15vh; }
+.gm-back { position: absolute; left: 66.9vw; height: 1.35vh; width: auto; margin-top: 1.02vh; transform: scaleX(-1);
+  filter: drop-shadow(0 0.1vh 0.2vh rgba(0,0,0,0.4)); }
+body.gm-sub #xmb { transform: translateX(-16.86vw); }
+/* (the game's background stays where it is: only the menu moves) */
+body.gm-sub #xmb .bg-layer { transform: translateX(16.86vw); }
+/* (IMG_3734, IMG_3736, IMG_3737: the info box isn't shown while a △ panel is
+   open: games, Users and Account Management) */
+body:is(.gm-sub, :has(.gamemenu.show)) #infobox { opacity: 0; transition: opacity .2s ease; }
+body.gm-sub .item.gm-band::before { display: none; }
+/* Delete (game options), IMG_3553: the Photo Viewer's confirmation layout
+   over the blurred system background (no dark tint) */
+.gamedlg { position: fixed; inset: 0; z-index: 72; display: none; color: var(--text, #fff); }
+.gamedlg.show { display: block; }
+.gamedlg .vp-dlg { background: rgba(0,0,0,0.1); }
+.gamedlg .vp-dlg-foot > span { cursor: pointer; }
+.gamedlg .vp-dlg-opt { cursor: pointer; }
+.gamedlg .pv-dlg-thumb.gd-stock img { max-width: 62%; max-height: 62%; }
+/* the layout of IMG_3598 / IMG_3599 / IMG_3601: the picture centred at 34.2 %
+   (its name 11.5 % below it), the question's lines left-aligned in a block
+   centred at 65.5 % and level with the picture, Yes / No centred under it */
+.gamedlg .ud-dlg .vp-dlg-thumb.pv-dlg-thumb { left: 34.2vw; top: 50.3vh; width: 10.2vw; height: 10.5vh; }
+.gamedlg .ud-dlg .pv-dlg-meta { left: 34.2vw; top: 61.8vh; transform: translate(-50%, -50%); font-size: 1.95vh; line-height: 2.8vh; }
+.gamedlg .ud-dlg .pv-dlg-meta + .vp-dlg-body, .gamedlg .ud-dlg .vp-dlg-thumb + .vp-dlg-body { left: 65.5vw; top: 46.3vh; transform: translateX(-50%); }
+.gamedlg .ud-dlg .vp-dlg-text { font-size: 2.05vh; line-height: 3.15vh; text-align: left; }
+.gamedlg .ud-dlg .vp-dlg-opts { justify-content: center; padding: 0; gap: 0; margin-top: 3.2vh; }
+.gamedlg .ud-dlg .vp-dlg-opt { width: 7.6vw; text-align: center; font-size: 2.05vh; line-height: 3.15vh; }
+/* the selected game while the panel is open: its name and its console badge
+   are hidden */
+.item.gm-open .item-label, .item.gm-open .game-fmt { opacity: 0 !important; }
+/* Game Options Band: a see-through black band behind the game's icon and name
+   (IMG_3374); the name stays */
+.item.gm-band::before { content: ""; position: absolute; left: var(--band-l, -0.5vw); top: var(--band-t, -0.55vh); height: var(--band-h, 20vh); width: var(--band-w, 40vw);
+  background: rgba(0,0,0,0.06); z-index: -1; pointer-events: none;
+  /* centred on the screen; it fades in from the picture's right edge to its
+     left end, and the same way (mirrored) out to its right end behind the panel */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--band-f, 12%), #000 calc(100% - var(--band-f, 12%)), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 var(--band-f, 12%), #000 calc(100% - var(--band-f, 12%)), transparent 100%); }
+/* (IMG_3678 -> IMG_3679: with the panel open the game's picture grows 1.36 x
+   about its middle and its name, date and console badge move 3.42 % of the
+   screen to the right, the name's size unchanged) */
+.item.item-game .art-frame { transition: width 0.24s ease, scale 0.2s ease; }
+.item.item-game .item-label, .item.item-game .game-fmt { transition: translate 0.2s ease, opacity .35s ease, margin-left .24s ease; }
+.item.item-game:is(.gm-band, .gm-open) .art-frame { scale: 1.36; }
+.item.item-game:is(.gm-band, .gm-open) .item-label, .item.item-game:is(.gm-band, .gm-open) .game-fmt { translate: 3.42vw 0; }
+/* (IMG_3733 -> IMG_3734, IMG_3735 -> IMG_3736: a user's / Account
+   Management's △ panel: its icon grows 1.26 x about its middle, its name moves
+   1.55 % of the screen to the right; the rows above move up 1.3 % and the rows
+   below down 3.8 % of the screen's height, their names hidden) */
+.item .item-sys { transition: scale .2s ease; }
+.item.tri-zoom :is(.item-avatar, .item-sys) { scale: 1.26; }
+.item.tri-zoom .item-label { translate: 1.55vw 0; }
+.item.tri-up { translate: 0 -1.3vh; }
+.item.tri-down { translate: 0 3.8vh; }
+.item:is(.tri-up, .tri-down) .item-label { opacity: 0 !important; }
+/* (and, over the system's own background, not a game's picture: the other
+   categories' icons go blurred and the selected one's name hides) */
+body:has(.gamemenu.show.nobg):not(.nomenublur) .cat:not(.sel) { filter: blur(0.4vh); transition: filter .2s ease; }
+body:has(.gamemenu.show.nobg) .cat.sel .cat-label { opacity: 0; }
+/* Hide Game Title on Background: the name fades once the game's background is up */
+.item.bg-notitle .item-label, .item.bg-notitle .game-fmt { opacity: 0 !important; transition: opacity .4s ease; }
+/* console badge (Console in game.json): on the right of the selected game,
+   on its date line (capture x 1252, y 537 for a title at x 836) */
+.item .game-fmt { position: absolute; left: calc(50% + 31.9vw); top: calc(50% + 3vh); transform: translateY(-50%);
+  height: 2.3vh; width: auto; display: none; pointer-events: none; }
+.item.sel .game-fmt { display: block; }
+.item .game-fmt-txt { width: 9.04vh; background: center / 100% 100% no-repeat; }
+.game-fmt-txt > span { position: absolute; left: 3.6%; width: 79.1%; top: 0; bottom: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 1.35vh; font-weight: 700; color: #eceef2; white-space: nowrap; overflow: hidden; text-shadow: 0 0.12vh 0.15vh rgba(0,0,0,0.75); }
+
+/* ---------- game Information screen (E3367 / E3368) ---------- */
+.gameinfo { position: fixed; inset: 0; z-index: 70; display: none; }
+.gameinfo.show { display: block; }
+.gameinfo::before, .gameinfo::after { content: ""; position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.85); }
+.gameinfo::before { top: 20vh; } .gameinfo::after { top: 79.6vh; }
+.gi2-icon { position: absolute; left: 50vw; top: 35vh; transform: translate(-50%, -50%); height: 13vh; max-width: 18vw; object-fit: contain; }
+.gi2-rows { position: absolute; left: 0; right: 0; top: 47.4vh; }
+.gi2-row { height: 3.5vh; display: flex; align-items: center; font-size: 2.3vh; text-shadow: 0 0.12vh 0.35vh rgba(0,0,0,0.45); }
+.gi2-k { width: 50vw; text-align: right; padding-right: 0.55vw; box-sizing: border-box; white-space: nowrap; }
+.gi2-v { white-space: nowrap; padding-left: 0.45vw; }
+.gi2-scroll { position: absolute; left: 18.3vw; top: 45.8vh; height: 29vh; width: 0.45vw; }
+.gi2-track { position: absolute; inset: 0; background: rgba(255,255,255,0.3); border-radius: 0.2vw; }
+.gi2-thumb { position: absolute; left: 0; right: 0; background: #fff; border-radius: 0.2vw; box-shadow: 0 0 0.4vh rgba(255,255,255,0.6); }
+.gi2-arr { position: absolute; left: 50%; transform: translateX(-50%); height: 1vh; width: auto; }
+.gi2-arr.up { top: -1.5vh; } .gi2-arr.dn { bottom: -1.5vh; }
+.gi2-note { position: absolute; left: 0; right: 0; top: 76.9vh; text-align: center; font-size: 1.72vh; text-shadow: 0 0.12vh 0.35vh rgba(0,0,0,0.45); }
+.gi2-foot { position: absolute; left: 0; right: 0; top: 84vh; transform: translateY(-50%); display: flex; justify-content: center; gap: 13vw; font-size: 2.1vh; }
+.gi2-foot > span { display: inline-flex; align-items: center; gap: 0.6vw; }
+body:has(.musicplayer.show) .form.show { z-index: 86; }
+
+/* Theme Settings > Text Color: the menu text, the info box's date / time and
+   friend count, and the music / video player text (cards and bubbles keep theirs) */
+:root.tc-custom #xmb .item-label, :root.tc-custom #xmb .cat-label, :root.tc-custom #xmb .d-sub,
+:root.tc-custom #xmb .item-detail, :root.tc-custom #xmb .media-sort, :root.tc-custom .gamemenu, :root.tc-custom .gameinfo,
+:root.tc-custom .sidemenu, :root.tc-custom .ib-count, :root.tc-custom .ib-dt,
+:root.tc-custom .vp, :root.tc-custom .musicplayer .vp-box, :root.tc-custom .musicplayer { color: var(--text); }
+/* Theme Settings > Info Box Color: only the box's lines and the clock */
+:root.ib-custom .ib-box { border-color: color-mix(in srgb, var(--ib-color) 55%, transparent);
+  box-shadow: inset 1px 1px 5px color-mix(in srgb, var(--ib-color) 30%, transparent), inset 1px -1px 5px color-mix(in srgb, var(--ib-color) 30%, transparent); }
+/* the clock icon: its own Clock Color (the Info Box Color leaves it as it is) */
+:root.clk-custom .ib-clock { color: var(--clock-color); }
+
+/* A font chosen in Theme Settings has no bold face, so the browser would make
+   one (synthetic bold). With detailed fonts (thousands of points per letter)
+   that is redrawn on every frame of the title glow and slows everything down,
+   so the bold look is drawn with a thin outline in the text's colour instead. */
+:root.user-font { font-synthesis: none; }
+:root.user-font :is(.item.sel .il-title, .il-vsub, .d-sub.d-warn, .d-warn-text, .dp-title, .gi-title,
+  .vp-dlg-opt.sel, .fc-level) { -webkit-text-stroke: 0.025em currentColor; }
+
+/* playlist pickers as a thumbnail grid (Photo Gallery style): a tick box on
+   each thumbnail and the file's name under it */
+.form.lpgrid .avpick-grid { row-gap: 6.2vh; padding-bottom: 3vh; }
+.form.lpgrid .avpick-av { object-fit: contain; background: rgba(0,0,0,0.25); }
+.lpg-none { background: rgba(255,255,255,0.08) url('./assets/icons/system/default_music.png') center / 60% no-repeat; }
+.lpg-font { display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.08); color: #fff; font-size: calc(5.2vh * var(--font-scale, 1)); line-height: 1; }
+.lpg-check { position: absolute; left: 0.4vh; top: 0.4vh; width: 2.6vh; height: 2.6vh; filter: drop-shadow(0 0.1vh 0.3vh rgba(0,0,0,0.7)); }
+.lpg-label { position: absolute; left: -0.6vw; right: -0.6vw; top: 100%; margin-top: 0.6vh; text-align: center; font-size: 1.45vh;
+  line-height: 1.25; max-height: 3.7vh; overflow: hidden; word-break: break-word; text-shadow: 0 0.1vh 0.3vh rgba(0,0,0,0.6); }
+
+/* custom sections: their own pictures as section / subsection icons, whole */
+img.sysicon.customicon { background: none; -webkit-mask: none; mask: none; object-fit: contain; display: block; }
+/* custom section icons with the section's Icon Effects (sections.js _secIcon):
+   .custmask = the picture's shape filled like the other icons (Icon Color +
+   Icon Style), .cust-flat = Icon Color without the style's shading,
+   .custwrap = the picture's own colours with the style's gloss over them,
+   .cust-solid = Transparency off */
+.sysicon.custmask.cust-flat { background: var(--icon-color) !important; }
+.sysicon.custwrap { position: relative; background: none !important; -webkit-mask: none !important; mask: none !important; }
+.custwrap .cust-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.custwrap .cust-gloss { position: absolute; inset: 0; pointer-events: none;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: contain; mask-size: contain; mix-blend-mode: screen;
+  background: linear-gradient(180deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.16) 28%, rgba(255,255,255,0) 50%, rgba(255,255,255,0.08) 56%, rgba(255,255,255,0) 100%); }
+:root[data-icons="flat"] .custwrap .cust-gloss { display: none; }
+:root[data-icons="glossy"] .custwrap .cust-gloss { background: linear-gradient(160deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.25) 30%, rgba(255,255,255,0) 60%); }
+:root[data-icons="inverted"] .custwrap .cust-gloss { mix-blend-mode: multiply;
+  background: linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(255,255,255,1) 45%, rgba(170,170,170,1) 100%); }
+.sysicon.cust-solid { opacity: 1 !important; filter: none !important; }
+/* a custom picture shaded with the Icon Style (_shadeCustomIcons): the shaded
+   picture alone; with the Flat style and the Icon Color, its shape in that colour */
+.custwrap.cs-ready .cust-gloss { display: none; }
+:root[data-icons] .sysicon.custwrap { background: none !important; }
+:root[data-icons="flat"] .custwrap.cs-tint .cust-img { opacity: 0; }
+:root[data-icons="flat"] .custwrap.cs-tint .cust-gloss { display: block; mix-blend-mode: normal; background: var(--icon-color); }
+/* moving a section into place: it pulses, and wobbles away from the way it moves */
+.cat.placing .sysicon { animation: secPulse 1.6s ease-in-out infinite; }
+@keyframes secPulse { 0%, 100% { filter: drop-shadow(0 0 0.4vh rgba(255,255,255,0.35)); } 50% { filter: drop-shadow(0 0 1.8vh rgba(255,255,255,0.95)); } }
+/* it hangs from its top edge: moving it swings it back against the move, then
+   it sways to and fro, smaller each time, and settles */
+.cat .sysicon.wob-r, .cat .sysicon.wob-l { transform-origin: 50% 0%; }
+.cat .sysicon.wob-r { animation: secWobR 1.5s linear, secPulse 1.6s ease-in-out infinite; }
+.cat .sysicon.wob-l { animation: secWobL 1.5s linear, secPulse 1.6s ease-in-out infinite; }
+@keyframes secWobR { 0% { rotate: 0deg; animation-timing-function: ease-out; } 12% { rotate: 22deg; animation-timing-function: ease-in-out; }
+  32% { rotate: -14deg; animation-timing-function: ease-in-out; } 52% { rotate: 8deg; animation-timing-function: ease-in-out; }
+  70% { rotate: -4.5deg; animation-timing-function: ease-in-out; } 86% { rotate: 2deg; animation-timing-function: ease-in-out; } 100% { rotate: 0deg; } }
+@keyframes secWobL { 0% { rotate: 0deg; animation-timing-function: ease-out; } 12% { rotate: -22deg; animation-timing-function: ease-in-out; }
+  32% { rotate: 14deg; animation-timing-function: ease-in-out; } 52% { rotate: -8deg; animation-timing-function: ease-in-out; }
+  70% { rotate: 4.5deg; animation-timing-function: ease-in-out; } 86% { rotate: -2deg; animation-timing-function: ease-in-out; } 100% { rotate: 0deg; } }
+
+/* the loading screen while a background / overlay video converts */
+
+/* low performance mode (out of focus / in a game): every animation holds still */
+/* low performance mode (out of focus / in a game): every animation holds
+   still, except the loading icons and the clock box (and what's in it) */
+body.lowpower *, body.lowpower *::before, body.lowpower *::after { animation-play-state: paused !important; }
+body.lowpower :is(.d-spin, .loading-spin, #infobox, #infobox *, #infobox *::before, #infobox *::after) { animation-play-state: running !important; }
+
+/* loading: only the background and the clock (its hands sweeping round); the
+   XMB and the rest of the info box fade back in once it's done */
+.ib-dt { transition: opacity .45s ease; }
+.ib-box { transition: width .55s cubic-bezier(.22,.8,.3,1), border-color .45s ease, box-shadow .45s ease, background-color .45s ease; }
+body.clock-loading .xmb { opacity: 0 !important; pointer-events: none !important; transition: opacity .2s ease; }
+body.clock-loading .ib-dt, body.clock-loading .ib-profile { opacity: 0 !important; }
+body.clock-loading .ib-box { border-color: transparent !important; box-shadow: none !important; background-color: transparent !important; }
+
+/* Icon Color on the Music Player, Video Player and Photo Viewer icons (not the
+   format badges, the progress bar or the button glyphs) */
+.mp2-btn .mpi, .mp2-st, .vp-st, .vp-st-rep { filter: url(#icon-tint); }
+.vp-st-num { filter: url(#icon-tint) drop-shadow(0 0 0.6px rgba(0,0,0,0.5)) drop-shadow(1.5px 2px 1px rgba(0,0,0,0.75)); }
+.vp-filmicon, .vp-box img, .vp-arrows img, .vp-ssbtn, .vp-gup, .vp-gdn { filter: url(#icon-tint); }
+/* Icon Styles on the media players' icons (playericons.js redraws the pictures):
+   Glow / Glow (Pulsating): a glow around each, in the Icon Color; Glass
+   (Reactive): see-through like its glass */
+@property --pga { syntax: "<number>"; inherits: true; initial-value: 0.8; }
+/* (each icon glows in the colour of its own edge as it's drawn, as the XMB's
+   icons do: --pg-c, set by playericons.js; until it's known, white) */
+:root[data-glow] :is(.mp2-btn .mpi, .mp2-st, .vp-st, .vp-st-rep, .vp-filmicon, .vp-box img, .vp-arrows img, .vp-ssbtn, .vp-gup, .vp-gdn, .pv-box img, .pv-ss img, .pv-cam) {
+  filter: url(#icon-tint) drop-shadow(0 0 0.35vh rgba(var(--pg-c, 255,255,255), var(--pga)))
+          drop-shadow(0 0 1.1vh rgba(var(--pg-c, 255,255,255), calc(var(--pga) * 0.6))); }
+:root[data-glow] .vp-st-num { filter: url(#icon-tint) drop-shadow(0 0 0.35vh rgba(var(--pg-c, 255,255,255), var(--pga))); }
+/* (Pulsating: the strength, --pga, is set on the player about 6 times a second
+   by playericons.js while it's on screen, and its icons take it: no animation
+   running on every icon every frame) */
+img.pi-clear { opacity: 0.82; }
+/* Text Color: the Volume Control's label and its - / + too (both players) */
+:root.tc-custom .mp2-vol, :root.tc-custom .mp2-vlabel, :root.tc-custom .mp2-vminus, :root.tc-custom .mp2-vplus { color: var(--text); }
+
+/* ---------- Photo Viewer (PS3 captures, 1920x1080) ---------- */
+.pv { position: absolute; inset: 0; overflow: hidden; background: #000; color: #fff; }
+.pv-stage { position: absolute; inset: 0; overflow: hidden; }
+.pv-img { position: absolute; left: 50%; top: 50%; max-width: none; max-height: none; user-select: none; -webkit-user-drag: none; }
+/* the control panel: icons on a 64 px pitch, rows 66 px apart, centred on
+   x 515, first row at y 438, the focused icon's name at y 642 */
+.pv-cluster { left: 26.8vw; top: 37.4vh; }
+.pv-cluster .mp2-btn.btn-off { opacity: 0.35; }
+.pv-cluster .mp2-crow { height: 6.6vh; margin-bottom: -0.55vh; }
+.pv-cluster .mp2-sub { margin-top: 2.3vh; }
+/* option lists (Display Mode, Change Effect, Slideshow Style / Speed) */
+.pv-pop { display: none; margin: 1.2vh auto 0; width: max-content; min-width: 9vw; padding: 0.6vh 1.6vw 0.8vh;
+  background: rgba(10,10,10,0.9); border: 1px solid rgba(255,255,255,0.12); }
+.pv-pop.on { display: block; }
+.pv-popi { font-size: 2.05vh; line-height: 2.75vh; text-align: center; opacity: 0.8; white-space: nowrap; }
+.pv-popi.sel { opacity: 1; animation: xmbLabelGlow 3.4s ease-in-out infinite; }
+/* the lower-left: small picture with the white rectangle, then the status box */
+.pv-nav { position: absolute; left: 5.4vw; top: 74.5vh; transform: translateY(-50%); display: none; }
+.pv-nav.on { display: block; }
+.pv-navbox { position: relative; overflow: hidden; box-shadow: 0 0 0 1px rgba(255,255,255,0.25); background: #000; }
+.pv-navimg { position: absolute; left: 50%; top: 50%; max-width: none; }
+.pv-rect { position: absolute; box-sizing: border-box; border: 2px solid #fff; box-shadow: 0 0 3px rgba(0,0,0,0.6); opacity: 0; transition: opacity .25s ease; }
+.pv-rect.on { opacity: 1; }
+.pv-box { position: absolute; left: 5.2vw; top: 84.6vh; transform: translateY(-50%); display: none; align-items: center; gap: 0.35vw;
+  padding: 0.25vh 0.5vw; font-size: 2vh; background: rgba(0,0,0,0.62); border-radius: 0.35vh; white-space: nowrap; }
+.pv-box.on { display: flex; }
+.pv-box .pv-boxmode { margin-left: 0.6vw; }
+.pv-box img { height: 2.8vh; width: auto; margin-left: -0.3vw; }
+/* the slideshow / previous / next icons (as big as on the console: ~3 vh of
+   glyph; the PNGs carry padding for their shadow) */
+.pv-ss { position: absolute; left: 5.0vw; top: 89.6vh; transform: translateY(-50%); display: none; align-items: center; gap: 0; }
+.pv-ss.on { display: flex; }
+.pv-ss img { height: 6.6vh; width: auto; margin-right: -1.2vh; }
+.pv-ss img.pv-ssrep { height: 6.6vh; }
+/* Display: the details panel on the right, then the top bar */
+.pv-info { position: absolute; left: 57.6vw; top: 21.4vh; width: 33.5vw; height: 58.6vh; padding: 1.4vh 0; box-sizing: border-box;
+  background: rgba(0,0,0,0.78); display: none; }
+.pv-info.on { display: block; }
+.pv-irow { display: flex; font-size: 1.86vh; line-height: 3.42vh; white-space: nowrap; }
+.pv-ik { width: 47%; text-align: right; padding-right: 0.9vw; box-sizing: border-box; }
+.pv-iv { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.pv-top { position: absolute; left: 0; right: 0; top: 0; height: 12.04vh; background: rgba(0,0,0,0.64); display: none; }
+.pv-top.on { display: block; }
+.pv-top > * { position: absolute; top: 9.9vh; transform: translateY(-50%); white-space: nowrap; font-size: 2.1vh; }
+.pv-cam { left: 4.9vw; height: 2.7vh; width: auto; }
+.pv-name { left: 6.9vw; max-width: 55vw; overflow: hidden; text-overflow: ellipsis; }
+.pv-count { right: 5vw; }
+/* Trimming / Set as Wallpaper: the white rectangle, title above, buttons below */
+.pv-crop { position: absolute; inset: 0; display: none; pointer-events: none; }
+.pv-crop.on { display: block; }
+.pv-crop-rect { position: absolute; box-sizing: border-box; border: 2px solid #fff; box-shadow: 0 0 0 100vmax rgba(0,0,0,0.35), 0 0 4px rgba(0,0,0,0.6); }
+.pv-crop-title { position: absolute; left: 50%; transform: translate(-50%, -135%); font-size: 2.1vh; text-shadow: 0 1px 3px rgba(0,0,0,0.8); white-space: nowrap; }
+.pv-crop-foot { position: absolute; left: 50%; transform: translate(-50%, 0.5vh); display: flex; gap: 18vw; font-size: 2.1vh; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.pv-crop-foot > span { display: inline-flex; align-items: center; gap: 0.6vw; }
+.pv.cropping .pv-cluster, .pv.cropping .pv-info, .pv.cropping .pv-top { display: none; }
+.pv.dlg .pv-cluster, .pv.dlg .pv-nav, .pv.dlg .pv-box, .pv.dlg .pv-ss, .pv.dlg .pv-info, .pv.dlg .pv-top, .pv.dlg .pv-crop { display: none; }
+/* Photo Viewer confirmations (IMG_3484): the whole picture in a box on the
+   left (see-through where the picture is), its name / date / size centred
+   under it, the message and Yes / No well to the right */
+.pv-dlg { background: rgba(0,0,0,0.5); }
+.vp-dlg-thumb.pv-dlg-thumb { left: 35.2vw; top: 50.3vh; width: 12.5vw; height: 14vh; transform: translate(-50%, -50%);
+  background: none; overflow: visible; display: flex; align-items: center; justify-content: center; }
+.vp-dlg-thumb.pv-dlg-thumb img { width: auto; height: auto; max-width: 100%; max-height: 100%; object-fit: contain; }
+.pv-dlg-meta { position: absolute; left: 35.2vw; top: 61.4vh; transform: translateX(-50%); text-align: center; font-size: 2vh; line-height: 3.9vh;
+  white-space: nowrap; text-shadow: 0 1px 3px rgba(0,0,0,0.7); }
+.pv-dlg .vp-dlg-thumb + .vp-dlg-body, .pv-dlg .pv-dlg-meta + .vp-dlg-body { left: 57.5vw; top: 45.4vh; transform: none; }
+.pv-dlg .vp-dlg-opts { justify-content: flex-start; padding-left: 5.5vw; gap: 5.6vw; margin-top: 3.6vh; }
+.pv-layer { position: absolute; inset: 0; pointer-events: none; }
+.pv-layer > * { pointer-events: auto; }
+.pv-box img, .pv-ss img, .pv-cam { filter: url(#icon-tint); }
+:root.tc-custom .pv { color: var(--text); }
+/* Print: only the picture */
+#printarea { display: none; }
+@media print {
+  body > *:not(#printarea) { display: none !important; }
+  #printarea { display: block !important; }
+  #printarea img { display: block; max-width: 100%; max-height: 100vh; margin: 0 auto; }
+}
+body:has(.mediaview.show) .form.show { z-index: 86; }
+

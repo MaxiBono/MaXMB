@@ -98,6 +98,14 @@ fn move_tree(old: &std::path::Path, new: &std::path::Path) {
 }
 /// The webview's own storage (WebView2 profile), also kept in the app folder.
 pub fn webview_dir(app: &AppHandle) -> PathBuf { ensure(data_dir(app).join("webview")) }
+/// The stores' sign-in windows (Linked Accounts): their own browser data, apart from the menus'
+pub fn login_webview_dir(app: &AppHandle) -> PathBuf { ensure(data_dir(app).join("webview_login")) }
+/// Trophies: their lists and pictures, kept (they're shown offline too)
+pub fn trophies_dir(app: &AppHandle) -> PathBuf { ensure(data_dir(app).join("cache").join("trophies")) }
+/// The signed-in Steam account's own picture (an avatar that can be chosen): kept
+pub fn steam_avatar_dir(app: &AppHandle) -> PathBuf { ensure(data_dir(app).join("cache").join("steam_avatar")) }
+/// Steam Friends' pictures: in the Temp folder, deleted when the system closes
+pub fn friends_cache_dir(app: &AppHandle) -> PathBuf { ensure(temp_dir(app).join("friends")) }
 
 pub fn settings_file(app: &AppHandle) -> PathBuf { data_dir(app).join("settings.json") }
 pub fn users_file(app: &AppHandle) -> PathBuf { data_dir(app).join("users.json") }
@@ -175,4 +183,25 @@ fn remove_old_controls_txt(app: &AppHandle) {
     let root = content_root(app);
     let Some(dir) = root.parent() else { return };
     let _ = std::fs::remove_file(dir.join("CONTROLS.txt"));
+}
+
+/// A file written whole or not at all: written beside it under a name of its own first
+/// (".<name>.<process>-<n>.tmp", one per save, so saves at the same time never mix), then put in
+/// its place. The disk filling up (or anything else failing) leaves the file as it was, and the
+/// half-written copy is deleted; a reader never finds it cut in the middle.
+pub fn write_whole(path: &std::path::Path, data: impl AsRef<[u8]>) -> std::io::Result<()> {
+    use std::io::Write;
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let name = path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{name}.{}-{n}.tmp", std::process::id()));
+    let r = (|| {
+        let mut f = fs::File::create(&tmp)?;
+        f.write_all(data.as_ref())?;
+        f.sync_all()?;
+        drop(f);
+        fs::rename(&tmp, path)
+    })();
+    if r.is_err() { let _ = fs::remove_file(&tmp); }
+    r
 }

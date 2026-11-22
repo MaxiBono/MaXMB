@@ -244,15 +244,50 @@ pub fn shortcut_icon_source(shortcut: &Path) -> Option<(PathBuf, i32)> {
     Some((resolve(t), 0))
 }
 
+/// Whether a picture has nothing to show: every visible pixel black (what
+/// Windows gives for some programs' icons at 256 px), or nothing visible.
+pub fn blank_rgba(px: &[u8]) -> bool {
+    px.chunks(4).all(|c| c.len() < 4 || c[3] < 8 || (c[0] < 6 && c[1] < 6 && c[2] < 6))
+}
+/// A game's icon.png that's blank (a black square from a program's icon,
+/// made before this was checked): deleted, so the program's icon is made
+/// again (and properly). Only small pictures are looked at (a blank one is a
+/// few KB).
+pub fn drop_blank_icon(dir: &Path) {
+    let f = dir.join("icon.png");
+    let Ok(m) = fs::metadata(&f) else { return };
+    if m.len() > 24_000 { return; }
+    let Ok(img) = image::open(&f) else { return };
+    if blank_rgba(img.to_rgba8().as_raw()) { let _ = fs::remove_file(&f); }
+}
+/// A game's icon.png made from its program's icon (artSource "local") by an older version, off
+/// centre in its picture: centred (center_png), once a session.
+pub fn center_local_icon(dir: &Path) {
+    static DONE: std::sync::Mutex<Option<std::collections::HashSet<PathBuf>>> = std::sync::Mutex::new(None);
+    let f = dir.join("icon.png");
+    if !DONE.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default).insert(f.clone()) { return; }
+    if crate::gameart::art_source(dir, "icon").as_deref() != Some(crate::gameart::SRC_LOCAL) { return; }
+    let Ok(b) = fs::read(&f) else { return };
+    if b.len() > 400_000 { return; }
+    let c = center_png(b.clone());
+    if c != b { let tmp = dir.join(".icon.centred.png"); if fs::write(&tmp, &c).is_ok() { let _ = fs::rename(&tmp, &f); } }
+}
 /// Icon of a program or shortcut (.exe / .lnk / .url), cached as a PNG. None if it can't be read.
 pub fn shortcut_icon(shortcut: &Path, cache_dir: &Path) -> Option<String> {
     let meta = fs::metadata(shortcut).ok()?;
     let mut h = DefaultHasher::new();
+    // (v2: what's drawn in it centred -- the ones kept before are made again)
+    "centred".hash(&mut h);
     shortcut.hash(&mut h);
     meta.len().hash(&mut h);
     meta.modified().ok().hash(&mut h);
     let out = cache_dir.join(format!("{:016x}.png", h.finish()));
-    if out.exists() { return Some(out.display().to_string()); }
+    // (one kept blank, from before: made again)
+    if out.exists() {
+        let blank = fs::metadata(&out).map(|m| m.len() <= 24_000).unwrap_or(false)
+            && image::open(&out).map(|i| blank_rgba(i.to_rgba8().as_raw())).unwrap_or(false);
+        if !blank { return Some(out.display().to_string()); }
+    }
     let (src, idx) = shortcut_icon_source(shortcut)?;
     let png = icon_png(&src, idx)?;
     fs::create_dir_all(cache_dir).ok()?;
@@ -282,8 +317,36 @@ pub struct Record {
 pub fn load_record(file: &Path) -> Record {
     fs::read_to_string(file).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
 }
+/// A game's folder in content\Games given the name typed for the game: the characters a folder
+/// can't have left out, numbered when another folder has that name ("Name (2)"), only the
+/// capitals changed through a passing name (Windows sees the same folder). None: already so.
+pub fn rename_game_folder(dir: &Path, title: &str) -> std::io::Result<Option<PathBuf>> {
+    let Some(parent) = dir.parent() else { return Ok(None) };
+    let base = safe_folder_name(title);
+    let cur = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    if cur == base { return Ok(None); }
+    let key = |p: &Path| path_key(&p.display().to_string());
+    let mut target = parent.join(&base);
+    let mut n = 2;
+    while target.exists() && key(&target) != key(dir) { target = parent.join(format!("{base} ({n})")); n += 1; }
+    if target.exists() {
+        let tmp = parent.join(format!("{cur}.renaming"));
+        fs::rename(dir, &tmp)?;
+        if let Err(e) = fs::rename(&tmp, &target) { let _ = fs::rename(&tmp, dir); return Err(e); }
+    } else { fs::rename(dir, &target)?; }
+    Ok(Some(target))
+}
+/// A game's folder in content\Games renamed (Game Settings > Title): the list of recognized
+/// games follows it, so the game is never taken for one the user deleted (and made again).
+pub fn folder_renamed(file: &Path, old: &str, new: &str) {
+    let _one = SYNC.lock().unwrap_or_else(|e| e.into_inner());
+    let mut rec = load_record(file);
+    let mut n = 0;
+    for e in rec.entries.iter_mut().filter(|e| path_key(&e.folder) == path_key(old)) { e.folder = new.to_string(); n += 1; }
+    if n > 0 { save_record(file, &rec); }
+}
 pub fn save_record(file: &Path, r: &Record) {
-    if let Ok(s) = serde_json::to_string_pretty(r) { let _ = fs::write(file, s); }
+    if let Ok(s) = serde_json::to_string_pretty(r) { let _ = crate::paths::write_whole(file, s); }
 }
 
 /// A detected game shown in the settings list.
@@ -316,6 +379,7 @@ pub fn list_detected(file: &Path) -> Vec<Detected> {
 /// (and that sit inside content/Games) can be removed; the exe is remembered
 /// so the game isn't created again.
 pub fn delete_detected(file: &Path, games_dir: &Path, folder: &str) -> Result<(), String> {
+    let _one = SYNC.lock().unwrap_or_else(|e| e.into_inner());
     let rec = load_record(file);
     if !rec.entries.iter().any(|e| e.folder == folder) { return Err("not a detected game".into()); }
     let target = PathBuf::from(folder);
@@ -330,11 +394,16 @@ pub fn delete_detected(file: &Path, games_dir: &Path, folder: &str) -> Result<()
 /// folders inside content/Games) and forget them, so adding the folder again
 /// finds those games again. Returns how many were deleted.
 pub fn remove_source(file: &Path, games_dir: &Path, source: &str) -> usize {
+    let _one = SYNC.lock().unwrap_or_else(|e| e.into_inner());
     let mut rec = load_record(file);
     let g = games_dir.canonicalize().ok();
     let mut n = 0;
+    let want = path_key(source);
     rec.entries.retain(|e| {
-        if e.source != source { return true; }
+        // (its games: the ones found through it, and the ones with no folder
+        // noted, an older list's, whose program is inside it)
+        let its = path_key(&e.source) == want || (e.source.is_empty() && inside(&e.exe, &want));
+        if !its { return true; }
         if let (Ok(t), Some(g)) = (Path::new(&e.folder).canonicalize(), g.as_ref()) {
             if t.starts_with(g) && &t != g && fs::remove_dir_all(&t).is_ok() { n += 1; }
         }
@@ -342,6 +411,33 @@ pub fn remove_source(file: &Path, games_dir: &Path, source: &str) -> usize {
     });
     save_record(file, &rec);
     n
+}
+
+/// A source folder added: the games found in it before whose folders aren't in content\Games
+/// any more (deleted from Recognized Games, or the folder removed while a search was still
+/// running) are forgotten, so they're made again. Returns how many.
+pub fn source_added(file: &Path, source: &str) -> usize {
+    let _one = SYNC.lock().unwrap_or_else(|e| e.into_inner());
+    let mut rec = load_record(file);
+    let want = path_key(source);
+    let before = rec.entries.len();
+    rec.entries.retain(|e| Path::new(&e.folder).is_dir() || !(path_key(&e.source) == want || inside(&e.exe, &want)));
+    let n = before - rec.entries.len();
+    if n > 0 { save_record(file, &rec); }
+    n
+}
+
+/// One change to the list of recognized games at a time: a search (`sync_modes`), a folder
+/// removed, a game deleted (one saving the list it read before another's change would undo it:
+/// a folder removed during a search left its games listed, their folders gone).
+static SYNC: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// A path as written, for comparing: lower case, one kind of separator, none at its end.
+fn path_key(p: &str) -> String { p.trim().replace('/', "\\").trim_end_matches('\\').to_lowercase() }
+/// Is this file inside that folder (a `path_key`)?
+fn inside(file: &str, dir_key: &str) -> bool {
+    let f = path_key(file);
+    !dir_key.is_empty() && f.len() > dir_key.len() && f.starts_with(dir_key) && f.as_bytes()[dir_key.len()] == b'\\'
 }
 
 const SKIP_DIRS: &[&str] = &[
@@ -693,7 +789,7 @@ fn good_name(s: &str) -> bool {
         && !n.ends_with("exe")
 }
 
-fn safe_folder_name(s: &str) -> String {
+pub(crate) fn safe_folder_name(s: &str) -> String {
     let c: String = s.chars().map(|c| if "\\/:*?\"<>|".contains(c) || c.is_control() { ' ' } else { c }).collect();
     let c = c.split_whitespace().collect::<Vec<_>>().join(" ");
     let c = c.trim_end_matches('.').trim().to_string();
@@ -733,8 +829,7 @@ pub fn sync_modes(sources: &[String], apps: &[String], games_dir: &Path, record_
     // one search at a time: two at once (opening the Game column while a
     // folder is being added) would each make the same games and each save
     // only its own list, leaving games twice in the Game column
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _one = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let _one = SYNC.lock().unwrap_or_else(|e| e.into_inner());
     let mut rec = load_record(record_file);
     repair(games_dir, &mut rec);
     let mut added = Vec::new();
@@ -746,20 +841,33 @@ pub fn sync_modes(sources: &[String], apps: &[String], games_dir: &Path, record_
         .collect();
     // PS3 games: every game inside an RPCS3 install, and PS3 game folders
     // found in a source folder themselves (or one folder down)
-    let mut ps3_games: Vec<(String, crate::ps3::Ps3Game)> = Vec::new();
+    // (a game inside an RPCS3 install is started by that install's RPCS3: it keeps the game's
+    // trophies, saves and settings in its own dev_hdd0 -- another one would keep its trophies
+    // where the system doesn't look; the others by the last RPCS3 found)
+    let mut ps3_games: Vec<(String, crate::ps3::Ps3Game, Option<PathBuf>)> = Vec::new();
     for (src, gd) in &all {
         if let Some(rp) = crate::ps3::find_rpcs3(gd) {
             rec.rpcs3 = rp.display().to_string();
             let root = rp.parent().map(Path::to_path_buf).unwrap_or_else(|| gd.clone());
-            for g in crate::ps3::games_in(&root) { ps3_games.push((src.clone(), g)); }
+            for g in crate::ps3::games_in(&root) { ps3_games.push((src.clone(), g, Some(rp.clone()))); }
         } else if let Some(g) = crate::ps3::game_at(gd) {
-            ps3_games.push((src.clone(), g));
+            ps3_games.push((src.clone(), g, None));
         } else if main_exe(gd).is_none() {
+            // (PS3 game folders one folder down, and disc images (.iso) in it)
             for e in fs::read_dir(gd).into_iter().flatten().flatten() {
-                if let Some(g) = crate::ps3::game_at(&e.path()) { ps3_games.push((src.clone(), g)); }
+                if let Some(g) = crate::ps3::iso_game(&e.path()).or_else(|| crate::ps3::game_at(&e.path())) { ps3_games.push((src.clone(), g, None)); }
             }
         }
     }
+    // disc images (.iso) loose in a source folder itself (a folder of games: only its folders are games)
+    for s in sources.iter().filter(|s| !is_apps(s)) {
+        for e in fs::read_dir(s).into_iter().flatten().flatten() {
+            if let Some(g) = crate::ps3::iso_game(&e.path()) { ps3_games.push((s.clone(), g, None)); }
+        }
+    }
+    // (a game found twice -- its RPCS3 folder is a source, and the folder it's in too --: once)
+    let mut seen_ps3 = std::collections::HashSet::new();
+    ps3_games.retain(|(_, g, _)| seen_ps3.insert(path_key(&crate::ps3::key(g))));
     let rpcs3 = Some(PathBuf::from(&rec.rpcs3)).filter(|p| p.is_file());
     // the programs in the "Separate Apps" folders
     let app_list: Vec<(String, PathBuf)> = sources.iter().filter(|s| is_apps(s) && Path::new(s).is_dir())
@@ -768,18 +876,21 @@ pub fn sync_modes(sources: &[String], apps: &[String], games_dir: &Path, record_
     let total = all.len() + ps3_games.len() + app_list.len();
     progress(0, total);
     let base_n = all.len();
-    for (j, (src, g)) in ps3_games.into_iter().enumerate() {
+    for (j, (src, g, own)) in ps3_games.into_iter().enumerate() {
         progress(base_n + j, total);
         let key = crate::ps3::key(&g);
-        if let Some(e) = rec.entries.iter().find(|e| e.exe.eq_ignore_ascii_case(&key)) {
+        // (the same file however its address is written: "G:\Games\x" and "G:/Games/x" are one)
+        let rp_for = own.as_deref().or(rpcs3.as_deref());
+        if let Some(e) = rec.entries.iter().find(|e| path_key(&e.exe) == path_key(&key)) {
             // (made before: started the way it should be now, e.g. by its
-            // Title ID instead of its EBOOT.BIN, which RPCS3 couldn't decrypt)
-            update_ps3_launch(Path::new(&e.folder), &g, rpcs3.as_deref());
+            // Title ID instead of its EBOOT.BIN, which RPCS3 couldn't decrypt, or by
+            // the RPCS3 it's in)
+            update_ps3_launch(Path::new(&e.folder), &g, rp_for, own.is_some());
             // (its own art over what the game databases found for it before)
             if !crate::gameart::is_home(Path::new(&e.folder)) { crate::ps3::fill_media_ex(Path::new(&e.folder), &g.content, ffmpeg, true); }
             continue;
         }
-        let Some(dir) = make_ps3(&g, rpcs3.as_deref(), games_dir, ffmpeg) else { continue };
+        let Some(dir) = make_ps3(&g, rp_for, games_dir, ffmpeg) else { continue };
         let title = if g.title.is_empty() { g.title_id.clone() } else { g.title.clone() };
         rec.entries.push(Entry { exe: key, folder: dir.display().to_string(), title, source: src });
         added.push(dir);
@@ -794,10 +905,16 @@ pub fn sync_modes(sources: &[String], apps: &[String], games_dir: &Path, record_
             let exe_s = exe.display().to_string();
             // already made (or deleted by the user): leave it alone (a Steam
             // game made before is started through Steam now)
-            if let Some(e) = rec.entries.iter().find(|e| e.exe.eq_ignore_ascii_case(&exe_s)) {
+            if let Some(e) = rec.entries.iter().find(|e| path_key(&e.exe) == path_key(&exe_s)) {
                 if Path::new(&e.folder).is_dir() { upgrade_store(Path::new(&e.folder), &gd, &exe); }
                 continue;
             }
+            // a game the user deleted, whose program is another one now (an
+            // update, a launcher added next to it): still the deleted game.
+            // It only comes back when its folder is removed from the system
+            // and added again (remove_source forgets it).
+            let gk = path_key(&gd.display().to_string());
+            if rec.entries.iter().any(|e| !Path::new(&e.folder).is_dir() && inside(&e.exe, &gk)) { continue; }
             let store = store_launch(&gd, &exe);
             let vi = version_info(&exe);
             let folder_title = gd.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -942,14 +1059,19 @@ fn set_rpcs3_launch(meta: &mut serde_json::Map<String, serde_json::Value>, dir: 
 }
 /// A PS3 game's folder made earlier: its arguments brought up to date (and
 /// RPCS3 to start it, once one has been found).
-fn update_ps3_launch(dir: &Path, g: &crate::ps3::Ps3Game, rpcs3: Option<&Path>) {
+fn update_ps3_launch(dir: &Path, g: &crate::ps3::Ps3Game, rpcs3: Option<&Path>, own: bool) {
     let Ok(t) = fs::read_to_string(dir.join("game.json")) else { return };
     let Ok(serde_json::Value::Object(mut meta)) = serde_json::from_str::<serde_json::Value>(&t) else { return };
     let want: serde_json::Value = crate::ps3::rpcs3_args(g).into();
     let launch = meta.get("launch").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
     let title = meta.get("title").and_then(|v| v.as_str()).unwrap_or("Game").to_string();
+    // (its shortcut started another RPCS3 than the one the game is in: made again for its own)
+    let other = own && meta.contains_key("ps3Lnk") && rpcs3.map(|rp| {
+        let target = fs::read(dir.join(&launch)).ok().and_then(|b| parse_lnk(&b)).and_then(|l| l.target);
+        target.map(|t| path_key(&t) != path_key(&rp.display().to_string())).unwrap_or(false)
+    }).unwrap_or(false);
     // (its shortcut is up to date)
-    if meta.get("ps3Lnk") == Some(&want) && dir.join(&launch).is_file() && meta.contains_key("ps3Key") { return; }
+    if !other && meta.get("ps3Lnk") == Some(&want) && dir.join(&launch).is_file() && meta.contains_key("ps3Key") { return; }
     // the app's own link to RPCS3 with its arguments (made by an older
     // version), its shortcut, or nothing yet: a shortcut, up to date
     let ours = meta.contains_key("ps3Lnk")
@@ -991,7 +1113,7 @@ pub fn fill_ps3_folders(games_dir: &Path, record_file: &Path, ffmpeg: Option<&Pa
             if let Some(ff) = ffmpeg {
                 let v: serde_json::Value = fs::read_to_string(d.join("game.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
                 if let Some(src) = v["sourceDir"].as_str().filter(|s| !s.is_empty() && v["titleId"].as_str().map(|t| !t.is_empty()).unwrap_or(false)) {
-                    if let Some(g) = crate::ps3::game_at(Path::new(src)) {
+                    if let Some(g) = crate::ps3::iso_game(Path::new(src)).or_else(|| crate::ps3::game_at(Path::new(src))) {
                         if !crate::gameart::is_home(&d) { crate::ps3::fill_media(&d, &g.content, Some(ff)); }
                     }
                 }
@@ -1060,19 +1182,22 @@ fn repair(games_dir: &Path, rec: &mut Record) {
             if e2.path().join("game.json").exists() { dirs.push(e2.path()); }
         }
     }
-    let known = |rec: &Record, d: &Path| rec.entries.iter().any(|e| Path::new(&e.folder) == d);
+    // (folders and programs compared however their addresses are written)
+    let known = |rec: &Record, d: &Path| { let k = path_key(&d.display().to_string()); rec.entries.iter().any(|e| path_key(&e.folder) == k) };
     for d in dirs {
         if known(rec, &d) { continue; }
         let Some(exe) = folder_exe(&d) else { continue };
-        let twin = rec.entries.iter().find(|e| e.exe.eq_ignore_ascii_case(&exe)).map(|e| e.folder.clone());
+        let twin = rec.entries.iter().find(|e| path_key(&e.exe) == path_key(&exe)).map(|e| e.folder.clone());
         match twin {
-            Some(f) if Path::new(&f).is_dir() => {
+            // (never the listed folder itself)
+            Some(f) if Path::new(&f).is_dir() && path_key(&f) != path_key(&d.display().to_string()) => {
                 // the same game made twice: drop the extra copy
                 if only_app_files(&d) { let _ = fs::remove_dir_all(&d); }
             }
+            Some(f) if Path::new(&f).is_dir() => {}
             Some(_) => {
                 // its listed folder is gone (moved by the user?): this is the game now
-                if let Some(e) = rec.entries.iter_mut().find(|e| e.exe.eq_ignore_ascii_case(&exe)) { e.folder = d.display().to_string(); }
+                if let Some(e) = rec.entries.iter_mut().find(|e| path_key(&e.exe) == path_key(&exe)) { e.folder = d.display().to_string(); }
             }
             None if Path::new(&exe).exists() => {
                 let title = fs::read_to_string(d.join("game.json")).ok()
@@ -1096,12 +1221,43 @@ pub struct VersionInfo {
 }
 
 #[cfg(not(windows))]
-pub fn icon_png(_file: &Path, _index: i32) -> Option<Vec<u8>> { None }
+fn icon_png_raw(_file: &Path, _index: i32) -> Option<Vec<u8>> { None }
 #[cfg(not(windows))]
 pub fn version_info(_exe: &Path) -> VersionInfo { VersionInfo::default() }
 
 #[cfg(windows)]
-pub use win::{icon_png, version_info};
+use win::icon_png as icon_png_raw;
+#[cfg(windows)]
+pub use win::version_info;
+
+/// The icon at `index` of an exe / dll / ico file, as a PNG, with what's drawn in it centred.
+pub fn icon_png(file: &Path, index: i32) -> Option<Vec<u8>> { icon_png_raw(file, index).map(center_png) }
+
+/// A program's icon with what's drawn in it in the middle of its picture: many programs' icons
+/// are drawn to one side or low in their square (their see-through border wider on one side
+/// than the other), so they sat off-centre in their frame. The picture keeps its size; what's
+/// drawn in it (its pixels that show) is moved to its middle. A picture already centred, or not
+/// read, is kept as it was.
+pub fn center_png(png: Vec<u8>) -> Vec<u8> {
+    let Ok(img) = image::load_from_memory(&png) else { return png };
+    let img = img.to_rgba8();
+    let (w, h) = img.dimensions();
+    let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0u32, 0u32);
+    for (x, y, p) in img.enumerate_pixels() {
+        if p[3] > 8 { x0 = x0.min(x); y0 = y0.min(y); x1 = x1.max(x); y1 = y1.max(y); }
+    }
+    if x1 < x0 || y1 < y0 { return png; }
+    let (cw, ch) = (x1 - x0 + 1, y1 - y0 + 1);
+    let (nx, ny) = ((w - cw) / 2, (h - ch) / 2);
+    // (off by a pixel at most: as it is)
+    if (nx as i64 - x0 as i64).abs() <= 1 && (ny as i64 - y0 as i64).abs() <= 1 { return png; }
+    let part = image::imageops::crop_imm(&img, x0, y0, cw, ch).to_image();
+    let mut out = image::RgbaImage::new(w, h);
+    image::imageops::replace(&mut out, &part, nx as i64, ny as i64);
+    let mut buf = std::io::Cursor::new(Vec::new());
+    if image::DynamicImage::ImageRgba8(out).write_to(&mut buf, image::ImageFormat::Png).is_err() { return png; }
+    buf.into_inner()
+}
 
 #[cfg_attr(not(windows), allow(dead_code))]
 fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Option<Vec<u8>> {
@@ -1168,13 +1324,18 @@ mod win {
         Some(buf)
     }
 
-    /// The icon at `index` of an exe / dll / ico file, as a 256 px PNG.
+    /// The icon at `index` of an exe / dll / ico file, as a PNG: 256 px, or
+    /// (Windows giving a picture with no colour at that size, all black, as
+    /// for some Unity games) the largest smaller size that has its colours.
     pub fn icon_png(file: &Path, index: i32) -> Option<Vec<u8>> {
+        [256, 128, 64, 48, 32].into_iter().find_map(|sz| icon_png_at(file, index, sz))
+    }
+    fn icon_png_at(file: &Path, index: i32, size: i32) -> Option<Vec<u8>> {
         let path = wide(file.as_os_str());
         unsafe {
             let mut icon: isize = 0;
             let mut id: u32 = 0;
-            let n = PrivateExtractIconsW(path.as_ptr(), index, 256, 256, &mut icon, &mut id, 1, 0);
+            let n = PrivateExtractIconsW(path.as_ptr(), index, size, size, &mut icon, &mut id, 1, 0);
             if n == 0 || n == u32::MAX || icon == 0 { return None; }
             let mut info = ICONINFO { f_icon: 0, x: 0, y: 0, hbm_mask: 0, hbm_color: 0 };
             if GetIconInfo(icon, &mut info) == 0 { DestroyIcon(icon); return None; }
@@ -1193,7 +1354,7 @@ mod win {
                         c.swap(0, 2); // BGRA -> RGBA
                         if let Some(m) = &mask { c[3] = if m[i * 4] == 0 { 255 } else { 0 }; }
                     }
-                    out = encode_png(w as u32, h as u32, &px);
+                    if !super::blank_rgba(&px) { out = encode_png(w as u32, h as u32, &px); }
                 }
             }
             ReleaseDC(0, dc);
@@ -1263,6 +1424,75 @@ mod tests {
     fn names(root: &std::path::Path, dirs: Vec<PathBuf>) -> Vec<String> {
         let mut v: Vec<String> = dirs.iter().map(|d| if d == root { ".".to_string() } else { d.strip_prefix(root).unwrap().display().to_string() }).collect();
         v.sort(); v
+    }
+    // A PS3 game's path kept once with "\\" and once with "/" (two scans of the same RPCS3,
+    // from the folder above it and from its own): the same game, never added twice
+    #[test]
+    fn program_icons_are_centred() {
+        // (a 32 px icon drawn in its lower right: moved to its middle, the picture as big)
+        let mut im = image::RgbaImage::new(32, 32);
+        for y in 20..30 { for x in 18..30 { im.put_pixel(x, y, image::Rgba([200, 30, 30, 255])); } }
+        let mut b = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(im).write_to(&mut b, image::ImageFormat::Png).unwrap();
+        let out = image::load_from_memory(&center_png(b.into_inner())).unwrap().to_rgba8();
+        assert_eq!(out.dimensions(), (32, 32));
+        let (mut x0, mut y0, mut x1, mut y1) = (99, 99, 0, 0);
+        for (x, y, p) in out.enumerate_pixels() { if p[3] > 8 { x0 = x0.min(x); y0 = y0.min(y); x1 = x1.max(x); y1 = y1.max(y); } }
+        assert_eq!((x0, y0, x1, y1), (10, 11, 21, 20));
+        // (already in the middle, or nothing drawn: as it was)
+        let mut c = image::RgbaImage::new(8, 8); c.put_pixel(3, 3, image::Rgba([1, 2, 3, 255])); c.put_pixel(4, 4, image::Rgba([1, 2, 3, 255]));
+        let mut cb = std::io::Cursor::new(Vec::new()); image::DynamicImage::ImageRgba8(c).write_to(&mut cb, image::ImageFormat::Png).unwrap();
+        let cb = cb.into_inner(); assert_eq!(center_png(cb.clone()), cb);
+        assert_eq!(center_png(b"not a picture".to_vec()), b"not a picture".to_vec());
+    }
+    #[test]
+    fn the_same_path_written_two_ways() {
+        let a = r"G:\Small Drive\Games\Little Big Planet 2\dev_hdd0\game\NPUB31615\USRDIR\EBOOT.BIN";
+        let b = "G:/Small Drive/Games/Little Big Planet 2/dev_hdd0/game/NPUB31615\\USRDIR\\EBOOT.BIN";
+        assert_eq!(path_key(a), path_key(b));
+        assert_eq!(path_key(r"G:\Games\"), path_key("g:/games"));
+        assert_ne!(path_key(a), path_key(r"G:\Small Drive\Games\Uncharted 3\dev_hdd0\game\NPUB31615\USRDIR\EBOOT.BIN"));
+        assert!(inside(a, &path_key("G:/Small Drive/Games/Little Big Planet 2")));
+    }
+    // A source folder added again: its games whose folders are gone are made again (the
+    // folder removed while a search was running had left them listed); others stay as they are
+    #[test]
+    fn a_source_added_again_brings_its_games_back() {
+        let root = std::env::temp_dir().join(format!("maxmb_srcadd_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let games = root.join("Games"); fs::create_dir_all(games.join("Kept")).unwrap();
+        let file = root.join("game_sources.json");
+        let e = |exe: &str, folder: &Path, source: &str| Entry { exe: exe.into(), folder: folder.display().to_string(), title: "t".into(), source: source.into() };
+        let rec = Record { entries: vec![
+            e(r"G:\Games\A\a.exe", &games.join("Gone A"), r"G:\Games"),
+            e("G:/Games/LBP2/dev_hdd0/game/NPUB31615\\USRDIR\\EBOOT.BIN", &games.join("Gone Jetpack"), r"G:\Games"),
+            e(r"G:\Games\B\b.exe", &games.join("Kept"), r"G:\Games"),
+            e(r"D:\Other\c.exe", &games.join("Gone C"), r"D:\Other"),
+        ], rpcs3: String::new() };
+        save_record(&file, &rec);
+        // (the folder inside the source: only its own game)
+        assert_eq!(source_added(&file, r"G:\Games\LBP2"), 1);
+        assert_eq!(load_record(&file).entries.len(), 3);
+        // (the source itself: its games whose folders are gone; the kept one and the other source's stay)
+        assert_eq!(source_added(&file, "g:/games/"), 1);
+        let left: Vec<String> = load_record(&file).entries.iter().map(|e| e.exe.clone()).collect();
+        assert_eq!(left, vec![r"G:\Games\B\b.exe".to_string(), r"D:\Other\c.exe".to_string()]);
+        let _ = fs::remove_dir_all(&root);
+    }
+    // A game's listed folder written another way than the folder found: the folder is never taken
+    // for a second copy of itself (deleted)
+    #[test]
+    fn repair_never_deletes_the_listed_folder() {
+        let root = std::env::temp_dir().join(format!("maxmb_repair_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let games = root.join("Games"); let d = games.join("Game One"); fs::create_dir_all(&d).unwrap();
+        let exe = root.join("src").join("one.exe"); fs::create_dir_all(exe.parent().unwrap()).unwrap(); fs::write(&exe, b"MZ").unwrap();
+        fs::write(d.join("game.json"), serde_json::json!({ "title": "Game One", "sourceExe": exe.display().to_string() }).to_string()).unwrap();
+        let listed = format!("{}/", d.display().to_string().to_uppercase());
+        let mut rec = Record { entries: vec![Entry { exe: exe.display().to_string(), folder: listed, title: "Game One".into(), source: String::new() }], rpcs3: String::new() };
+        repair(&games, &mut rec);
+        assert!(d.join("game.json").is_file(), "the game's folder is still there");
+        let _ = fs::remove_dir_all(&root);
     }
     #[test]
     fn folders_of_games_with_programs_loose_in_them() {
@@ -1627,6 +1857,16 @@ mod tests {
         assert!(!made.exists());
         assert_eq!(sync(&srcs, &games, &rec, None, &|_, _| {}).len(), 0);
         assert_eq!(list_detected(&rec).len(), 0);
+        // its program changed (an update): still deleted
+        fs::rename(g.join("CoolGame.exe"), g.join("CoolGame2.exe")).unwrap();
+        assert_eq!(sync(&srcs, &games, &rec, None, &|_, _| {}).len(), 0);
+        // the folder removed from the system and added again: the game is back
+        let other_way = format!("{}/", srcs[0].to_uppercase());
+        assert_eq!(remove_source(&rec, &games, if cfg!(windows) { &other_way } else { &srcs[0] }), 0);
+        assert_eq!(load_record(&rec).entries.len(), 0);
+        assert_eq!(sync(&srcs, &games, &rec, None, &|_, _| {}).len(), 1);
+        assert_eq!(remove_source(&rec, &games, &srcs[0]), 1);
+        fs::remove_dir_all(&g).unwrap();
         // removing the source deletes what it made and forgets it
         let g2 = common.join("Other Game");
         fs::create_dir_all(&g2).unwrap();

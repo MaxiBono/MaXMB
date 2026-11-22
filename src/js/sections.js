@@ -183,7 +183,7 @@ export const SectionMethods = {
         () => { this.listPicker.close(); this.overlay = null; res(null); });
     });
     if (!kinds) return null;
-    if (!kinds.length) { this.audio.play("error", 0.5); this._shotFeedback("Choose at least one kind of files"); return null; }
+    if (!kinds.length) { this.audio.play("error", 0.5); this._shotFeedback("Choose at least one kind of files", "error"); return null; }
     return { mode: m.id, kinds: SRC_KINDS.map(([k]) => k).filter((k) => kinds.includes(k)) };
   },
   async _sectionColumn(sec) {
@@ -769,7 +769,7 @@ export const SectionMethods = {
       case "sec_fadd": {
         const p = await this._askFolder(`${s.name}: Add a Folder`);
         if (!p) return;
-        if ((s.folders ||= []).includes(p)) { this.audio.play("error", 0.4); this._shotFeedback("This folder is already in the section"); return; }
+        if ((s.folders ||= []).includes(p)) { this.audio.play("error", 0.4); this._shotFeedback("This folder is already in the section", "error"); return; }
         // (the section's own folder is read as it is: its items are made there)
         let own = null; try { own = await call("section_folder", { section: s.name, sub: null }); } catch (e) {}
         if (own && own.toLowerCase() !== p.toLowerCase()) {
@@ -809,7 +809,7 @@ export const SectionMethods = {
       }
       case "sec_delall": {
         if (!(await this._askConfirm(`The ${poss(s.name)} folder (content\\${s.name}) and everything in it will be deleted for good.\nAre you sure you want to continue?`))) return;
-        try { await call("section_delete_folder", { section: s.name, sub: null }); } catch (e) { this.audio.play("error", 0.4); this._shotFeedback(String(e)); return; }
+        try { await call("section_delete_folder", { section: s.name, sub: null }); } catch (e) { this.audio.play("error", 0.4); this._shotFeedback(String(e), "error"); return; }
         this.user.sections = this._sections().filter((x) => x !== s); this._persistUser();
         this.levels.pop();
         this._secMenusRefresh(() => this._sectionsMenuItems());
@@ -852,7 +852,7 @@ export const SectionMethods = {
         return;
       }
       case "sub_addkid": {
-        if (r.depth >= MAX_LAYERS) { this.audio.play("error", 0.5); this._shotFeedback(`Subsections can go ${MAX_LAYERS} layers deep at most`); return; }
+        if (r.depth >= MAX_LAYERS) { this.audio.play("error", 0.5); this._shotFeedback(`Subsections can go ${MAX_LAYERS} layers deep at most`, "error"); return; }
         const kid = await this._nestedSetup(r.depth + 1);
         if (kid) { (n.children ||= []).push(kid); this._persistUser(); this._secMenusRefresh(() => this._nodeChildItems(id, path)); }
         return;

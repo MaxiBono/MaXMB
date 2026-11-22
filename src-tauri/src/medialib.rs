@@ -56,18 +56,29 @@ fn with_index<T>(file: &Path, f: impl FnOnce(&mut Index) -> T) -> T {
     }
     f(&mut ix)
 }
+/// The files read before that aren't there any more, forgotten (run at start):
+/// kept, the index (and its memory) grew with every file ever seen, moved and
+/// renamed ones included. A file whose folder isn't there either (a drive
+/// unplugged) is kept, so it isn't read again when the drive is back.
+pub fn forget_missing(file: &Path) -> usize {
+    let n = with_index(file, |ix| {
+        let before = ix.map.len();
+        ix.map.retain(|k, _| {
+            let p = Path::new(k.split_once('|').map(|(_, p)| p).unwrap_or(k));
+            p.is_file() || !p.parent().map(|d| d.is_dir()).unwrap_or(false)
+        });
+        let gone = before - ix.map.len();
+        if gone > 0 { ix.dirty = true; }
+        gone
+    });
+    save_index(file);
+    n
+}
 fn save_index(file: &Path) {
     let mut ix = index();
     if !ix.dirty { return; }
     if let Ok(t) = serde_json::to_string(&ix.map) { let _ = fs::write(file, t); }
     ix.dirty = false;
-}
-/// Forget everything read so far: files are read again.
-#[allow(dead_code)]
-pub fn clear_index(file: &Path) {
-    let mut ix = index();
-    ix.map.clear(); ix.dirty = false; ix.loaded = true; ix.file = Some(file.to_path_buf());
-    let _ = fs::remove_file(file);
 }
 
 /// Delete Song Covers: every song's cover read again from the song itself
@@ -476,6 +487,23 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    #[test]
+    fn files_gone_are_forgotten() {
+        let t = std::env::temp_dir().join(format!("xmb_mlgone_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&t);
+        fs::create_dir_all(t.join("lib")).unwrap();
+        let ix = t.join("ix.json");
+        for n in ["a.png", "b.png"] { image::RgbImage::new(4, 4).save(t.join("lib").join(n)).unwrap(); }
+        let ex = Extras { ffmpeg: None, covers: None };
+        let _ = list(&[t.join("lib")], "photo", &ix, &ex, &|_, _| {});
+        // b deleted, and a file of a folder that isn't there (a drive unplugged)
+        fs::remove_file(t.join("lib/b.png")).unwrap();
+        with_index(&ix, |i| { let e = i.map.values().next().unwrap().clone(); i.map.insert("photo|Z:/unplugged/c.png".into(), e); });
+        assert_eq!(forget_missing(&ix), 1);
+        let keys: Vec<String> = with_index(&ix, |i| i.map.keys().cloned().collect());
+        assert!(keys.iter().any(|k| k.ends_with("a.png")) && !keys.iter().any(|k| k.ends_with("b.png")) && keys.iter().any(|k| k.contains("unplugged")));
+        let _ = fs::remove_dir_all(&t);
+    }
     #[test]
     fn videos_and_covers_read_without_ffmpeg_are_read_again_with_it() {
         // (needs an ffmpeg on PATH to make the files; skipped otherwise)

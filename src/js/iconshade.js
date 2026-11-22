@@ -300,6 +300,11 @@ export function dropThemeShades(live, gone = []) {
     dropShaded(v);
   }
   for (const u of goneSet) { _imgCache.delete(u); _imgLoaded.delete(u); }
+  // (the glass shapes and glow shapes made for those themes' icons too: kept,
+  // every theme tried with a Reactive or Glow style stayed in memory for good)
+  const old = (name) => { const tk = /^[tc]:/.test(name) ? name.slice(2).split("|")[0] : ""; return (/^(p3t|icon|custom):/.test(tk) && !live.has(tk)) || (goneSet.size && gone.some((u) => name.includes(u))); };
+  for (const k of [..._glassMaps.keys()]) if (old(k)) _glassMaps.delete(k);
+  for (const [k, u] of [..._glowMasks]) if (old(k)) { try { URL.revokeObjectURL(u); } catch (e) {} _glowMasks.delete(k); _edgeColors.delete(k); }
   return n;
 }
 // (what's in memory, for checking: the pictures' keys, how many lenses and glow shapes)

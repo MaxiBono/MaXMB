@@ -2,9 +2,9 @@
 //
 // Any element that is (a) tagged with class "mq", or (b) matches one of the
 // AUTO selectors below, gets its text wrapped in a `.mq-inner` span. If that
-// text overflows the element's box, the text scrolls left in full laps: a
-// copy follows it after a gap, so once the end has passed the start comes back
-// in from the right (no ping-pong back). Otherwise it stays put. A periodic scan
+// text overflows the element's box, it scrolls as the console's does: still
+// for 2 s, then left until it has gone, then back at its start. Otherwise it
+// stays put. A periodic scan
 // re-measures after the app re-renders (which rebuilds the elements' innards).
 
 const AUTO = [
@@ -18,13 +18,15 @@ const AUTO = [
   ".br-status",       // in-app browser: the address of the link under the pointer
 ];
 
-const GAP = 64;   // px between the end of the text and its copy
-
 function setup(el) {
   if (!el || !el.isConnected) return;
-  // nothing changed since the last look (same text, same width): skip it
-  const sig = el.textContent + "|" + el.clientWidth;
-  if (el._mqSig === sig) return;
+  // nothing changed since the last look (same text, same room, the text as wide as it was -- a
+  // name that fits while its row isn't chosen is wider, and may not fit, once it is): skip it
+  // (its text written anew -- the scrolling copy gone --: always looked at again, never taken
+  // for "as before": a name written anew after each look would otherwise stay still for good)
+  const txt = el.querySelector(":scope > .mq-inner > .mq-a");
+  const sig = el.textContent + "|" + el.clientWidth + "|" + (txt ? txt.offsetWidth : -1);
+  if (txt && el._mqSig === sig) return;
   el._mqSig = sig;
   let inner = el.querySelector(":scope > .mq-inner");
   if (!inner) {
@@ -39,33 +41,33 @@ function setup(el) {
     el.classList.add("mq-box");
   }
   const a = inner.querySelector(":scope > .mq-a") || inner;
-  let dup = inner.querySelector(":scope > .mq-dup");
+  // (the earlier full-lap copy, from before: not used any more)
+  inner.querySelector(":scope > .mq-dup")?.remove();
   const cs = getComputedStyle(el);
   const inner_w = el.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
   const overflow = a.offsetWidth - inner_w;
   if (overflow > 2 && inner_w > 0) {
-    if (!dup) {
-      dup = document.createElement("span");
-      dup.className = "mq-dup"; dup.setAttribute("aria-hidden", "true");
-      dup.style.paddingLeft = `${GAP}px`;
-      inner.appendChild(dup);
-    }
-    if (dup.innerHTML !== a.innerHTML) dup.innerHTML = a.innerHTML;
-    const lap = a.offsetWidth + GAP;
-    // slow, readable pace (~40 px/s) with a 1.6 s hold at the start of each lap
-    if (inner._mqLap !== lap || !inner._mqAnim) {
+    // As the console's (its capture, frame by frame): the name stays still for
+    // 2 s, then moves left at a steady 89 px a second (on a 1080-line screen)
+    // until its end has gone past the left edge, stays gone for about half a
+    // second, comes back at its start with a short fade in, and so on.
+    const run = a.offsetWidth + (parseFloat(cs.paddingLeft) || 0);
+    const speed = 89 * (window.innerHeight || 1080) / 1080;
+    if (inner._mqLap !== run || !inner._mqAnim) {
       if (inner._mqAnim) inner._mqAnim.cancel();
-      const hold = 1600, travel = lap / 40 * 1000, dur = hold + travel;
+      const fade = 100, hold = 2000, travel = run / speed * 1000, gone = 470, dur = hold + travel + gone;
       inner._mqAnim = inner.animate([
-        { transform: "translateX(0)", offset: 0 },
-        { transform: "translateX(0)", offset: hold / dur },
-        { transform: `translateX(${-lap}px)`, offset: 1 },
-      ], { duration: dur, iterations: Infinity, easing: "linear" });
-      inner._mqLap = lap;
+        { transform: "translateX(0)", opacity: 0, offset: 0 },
+        { transform: "translateX(0)", opacity: 1, offset: fade / dur },
+        { transform: "translateX(0)", opacity: 1, offset: hold / dur },
+        { transform: `translateX(${-run}px)`, opacity: 1, offset: (hold + travel) / dur },
+        { transform: `translateX(${-run}px)`, opacity: 0, offset: 1 },
+      // (the first time: already there, without the fade)
+      ], { duration: dur, iterations: Infinity, easing: "linear", iterationStart: fade / dur });
+      inner._mqLap = run;
     }
     if (!el.classList.contains("mq-run")) el.classList.add("mq-run");
   } else {
-    if (dup) dup.remove();
     if (inner._mqAnim) { inner._mqAnim.cancel(); inner._mqAnim = null; inner._mqLap = 0; }
     el.classList.remove("mq-run");
   }

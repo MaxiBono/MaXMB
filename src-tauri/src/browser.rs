@@ -2294,9 +2294,6 @@ mod win {
         }
     }
 
-    pub fn right_button(down: bool) {
-        send_mouse(if down { 0x0008 } else { 0x0010 }, 0);   // MOUSEEVENTF_RIGHTDOWN / RIGHTUP
-    }
     pub fn mouse_button(down: bool) {
         send_mouse(if down { MOUSEEVENTF_LEFTDOWN } else { MOUSEEVENTF_LEFTUP }, 0);
     }

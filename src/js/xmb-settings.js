@@ -1,5 +1,5 @@
 // XMB: settings (the Xmb class's methods, from xmb.js; put on its prototype there)
-import { CONSOLES, FPS_CAPS, ICON_STYLES, PLAYER_OWN, __set_PLAYER_OWN, RESOLUTIONS, SQUARE_CTLS, applyIconColorVar, colorListFor, colorName, fmtSecs, fpsCapLabel, fpsCapOf, gameName } from "./xmb-shared.js";
+import { CONSOLES, FPS_CAPS, ICON_STYLES, __set_PLAYER_OWN, RESOLUTIONS, SQUARE_CTLS, applyIconColorVar, colorListFor, colorName, fmtSecs, fpsCapLabel, fpsCapOf, gameName } from "./xmb-shared.js";
 import { FIT_MODES } from "./fit.js";
 import { ACTIONS as KEY_ACTIONS, Keybinds, codeToVk, keyLabel } from "./keybinds.js";
 import { VIRTUAL_KB, holdAccel, parseColor } from "./ui.js";
@@ -10,6 +10,11 @@ import { glassLayer } from "./glasslayer.js";
 
 // the colour settings a PS3 theme's Theme Color sets while it's in use (see xmb-themes.js _tcol)
 const THEME_COLOR_CTLS = ["bgcolor", "wavecolor", "dotcolor", "foldercolor"];
+// Menu Blur (Power Save Settings): Original (the menus that always had it),
+// All (the Web browser too), Off. (The older "Remove Menu Blur: On" is Off.)
+const MENU_BLUR = [["original", "Original"], ["all", "All"], ["off", "Off"]];
+const menuBlurOf = (b) => (["original", "all", "off"].includes(b?.menuBlur) ? b.menuBlur : b?.noMenuBlur ? "off" : "original");
+
 export const SettingsMethods = {
   _settingsItems() {
     // Full Settings column in the standard PS3 order. Items without a `drills`
@@ -95,6 +100,8 @@ export const SettingsMethods = {
         { kind: "setting", ctl: "textcolor", title: "Text Color", icon: SI },
         { kind: "setting", ctl: "clockcolor", title: "Info Box and Buttons Color", icon: SI },
         { kind: "setting", ctl: "clockiconcolor", title: "Clock Color", icon: SI },
+        { kind: "setting", ctl: "clockshadow", title: "Clock Shadow", icon: SI },
+        { kind: "setting", ctl: "ibshadow", title: "Date and Time Shadows", icon: SI },
         { kind: "setting", ctl: "foldercoloron", title: "Folder Color", icon: SI, sub: "On: Make all folders share the same color." },
         { kind: "setting", ctl: "foldercolor", title: "Folder Color Pick", icon: SI },
         { kind: "setting", ctl: "themefolders", title: "Theme Folders", icon: SI,
@@ -130,6 +137,9 @@ export const SettingsMethods = {
           childrenFn: this._gameSettingsList },
         { kind: "drill", title: "Game Recognition", icon: SI, sub: "Choose where to find games.",
           childrenFn: this._gameRecognitionItems },
+        { kind: "action", act: "art_steam", title: "Steam Game Art Scraping", icon: SI },
+        { kind: "drill", title: "Game Art Databases", icon: SI, childrenFn: this._scrapeItems,
+          sub: "Enter the keys to access the game art in SteamGridDB, TheGamesDB or RAWG." },
         { kind: "drill", title: "Folder Console", icon: SI,
           sub: "Set the type of console for all games inside of a folder in the content\\Games directory.",
           childrenFn: this._folderConsoleList },
@@ -150,8 +160,8 @@ export const SettingsMethods = {
           sub: "On: When the system is out of focus, everything on screen stops." },
         { kind: "setting", ctl: "stillwaves", title: "Still Wave and Sparkles", icon: SI,
           sub: "This gives a performance boost to slower computers." },
-        { kind: "setting", ctl: "nomenublur", title: "Remove Menu Blur", icon: SI,
-          sub: "This gives a performance boost to slower computers." },
+        { kind: "setting", ctl: "menublur", title: "Menu Blur", icon: SI,
+          sub: "Off gives a performance boost to slower computers." },
       ],
       "Accessory Settings": [
         { kind: "setting", ctl: "vkb", title: "On-Screen Keyboard", icon: SI },
@@ -172,6 +182,8 @@ export const SettingsMethods = {
       "System Settings": [
         { kind: "setting", ctl: "autostart", title: "Start at Windows Startup", icon: SI },
         { kind: "setting", ctl: "boot", title: "Boot Intro", icon: SI },
+        { kind: "setting", ctl: "bootlook", title: "Keep Personalization Options when Booting", icon: SI,
+          sub: "On: The intro and Log In screen use the last personalization options used on the system." },
         { kind: "drill", title: "Media Folders", icon: SI,
           sub: "Choose the folders from where the system recognizes media files.",
           childrenFn: this._mediaFolderItems },
@@ -271,11 +283,14 @@ export const SettingsMethods = {
       { kind: "action", act: "cache_clear::icons", title: "Delete Icon Shading", icon: SI },
       { kind: "action", act: "cache_clear::wave", title: "Delete Wave Cache", icon: SI },
       { kind: "action", act: "cache_clear::visualizers", title: "Delete Visualizers Cache", icon: SI },
+      { kind: "action", act: "cache_clear::trophies", title: "Delete Trophy Cache", icon: SI },
+      { kind: "action", act: "cache_clear::steam", title: "Delete Steam Cache", icon: SI },
       { kind: "action", act: "cache_clear::all", title: "Delete All Cache", icon: SI },
     ];
   },
   _clearCache(category) {
-    const names = { all: "all cached data", decoded: "the preloaded songs data", covers: "the song covers", icons: "the icon shading", videos: "the preloaded videos data", thumbs: "the photo thumbnails", wave: "the wave cache", visualizers: "the visualizers cache" };
+    const names = { all: "all cached data", decoded: "the preloaded songs data", covers: "the song covers", icons: "the icon shading", videos: "the preloaded videos data", thumbs: "the photo thumbnails", wave: "the wave cache", visualizers: "the visualizers cache",
+      trophies: "the trophy cache", steam: "the Steam cache" };
     this.overlay = this.confirm;
     this.confirm.open(
       `Delete ${names[category] || "this cache"}?`,
@@ -287,6 +302,9 @@ export const SettingsMethods = {
           if (category === "covers" || category === "all") setTimeout(() => { if (this._preloadState === "loading") title("Reading song covers..."); }, 0);
           await call("clear_cache", { category }).catch(() => {});
           await this._afterCacheCleared(category);
+        }).then(() => {
+          // (the trophies read again at once, on the sync screen, so the trophy level is right again)
+          if ((category === "trophies" || category === "all") && this.user && this._trophySync) this._trophySync(null);
         });
       },
       () => { this.confirm.close(); this.overlay = null; });
@@ -305,6 +323,10 @@ export const SettingsMethods = {
     // (the wave's prepared start is made again, and saved, at its next start)
     if (all || category === "wave") forgetWaveCache();
     if (all || category === "visualizers") this.musicPlayer.freeVisuals();
+    // (Trophy Collection: nothing kept of it in memory either; read again straight after)
+    if (all || category === "trophies") { this._tSets = null; this._tUser = null; }
+    // (Steam Friends and the account's picture: read again from Steam)
+    if (all || category === "steam") { if (this._steamCacheCleared) await this._steamCacheCleared(); }
     if (all || category === "icons") {
       // (the pictures in memory too, and every icon shaded again from nothing)
       clearShades();
@@ -343,6 +365,8 @@ export const SettingsMethods = {
       case "iconcolor": return colorName(u?.theme?.iconColor, true);
       case "iconcoloron": return u?.theme?.iconColorAll === false ? "Off" : "On";
       case "foldercoloron": return u?.theme?.folderColorAll === false ? "Off" : "On";
+      case "ibshadow": return u?.theme?.infoShadow === false ? "Off" : "On";
+      case "clockshadow": return u?.theme?.clockShadow === false ? "Off" : "On";
       case "waves": return u?.theme?.[this._wk("wavesEnabled")] === false ? "Off" : "On";
       case "monthcolors": return u?.theme?.[this._wk("monthColors")] === false ? "Off" : "On";
       case "wavestyle": return this._waveEngine() === "linkev" ? "linkev" : (this.wave.originalFailReason && this.wave.originalFailReason() ? "Original (unavailable: linkev shown)" : "Original");
@@ -357,7 +381,6 @@ export const SettingsMethods = {
       case "gameband": return s?.behavior?.gameBand === false ? "Off" : "On";
       case "keepvideos": return s?.behavior?.keepPreloadedVideos ? "On" : "Off";
       case "deltemp": return s?.behavior?.deleteTempFiles ? "On" : "Off";
-      case "scrapeauto": return s?.scrape?.auto === false ? "Off" : "On";
       case "cacheapp": return s?.behavior?.cacheInAppDir ? "On" : "Off";
       case "friendmode": { const m = this._friendCfg().mode; return m === "fixed" ? "Fixed" : m === "range" ? "Range" : "Randomized"; }
       case "friendcount": return String(this._friendCfg().count);
@@ -368,6 +391,7 @@ export const SettingsMethods = {
       case "fullscreen": return s?.behavior?.fullscreen ? "On" : "Off";
       case "autostart": return s?.behavior?.autostart ? "On" : "Off";
       case "boot": return s?.behavior?.bootAnimation ? "On" : "Off";
+      case "bootlook": return s?.behavior?.keepBootLook === false ? "Off" : "On";
       case "startsound": return s?.behavior?.startupSound === false ? "Off" : "On";
       case "bufsound": return s?.behavior?.bufferingSound === true ? "On" : "Off";
       case "volume": return `${s?.behavior?.volume ?? 100}%`;
@@ -379,7 +403,7 @@ export const SettingsMethods = {
       case "vsync": return s?.behavior?.vsync === false ? "Off" : "On";
       case "fpscap": return fpsCapLabel(s?.behavior?.fpsCap);
       case "stillwaves": return s?.behavior?.stillWaves ? "On" : "Off";
-      case "nomenublur": return s?.behavior?.noMenuBlur ? "On" : "Off";
+      case "menublur": return MENU_BLUR.find((m) => m[0] === menuBlurOf(s?.behavior))[1];
       case "lowpower": return s?.behavior?.lowPowerMode ? "On" : "Off";
       case "vkb": return s?.behavior?.virtualKeyboard === false ? "Off" : "On";
       case "iconstyle": return Object.fromEntries(ICON_STYLES)[this._iconStyle()];
@@ -396,7 +420,8 @@ export const SettingsMethods = {
         const p = s?.behavior?.[ctl === "introicon" ? "introIcon" : "introTitle"];
         return p ? String(p).split(/[\\/]/).pop() : "Default";
       }
-      default: return "";
+      // Connect with Steam Friends (steamfriends.js)
+      default: return ctl.startsWith("sf:") ? this._sfValue(ctl) : ctl.startsWith("ag:") ? this._agValue(ctl) : "";
     }
   },
   _toggleSetting(it) {
@@ -407,6 +432,8 @@ export const SettingsMethods = {
     if (it.ctl && it.ctl.startsWith("secft:")) { this._secftAdjust(it.ctl, 1); return; }
     if (it.ctl && it.ctl.startsWith("secfx:")) { this._secfxToggle(it.ctl); return; }
     if (it.ctl && it.ctl.startsWith("tho:")) { this._thoToggle(it.ctl); return; }
+    if (it.ctl && it.ctl.startsWith("sf:")) { this._sfToggle(it.ctl); return; }
+    if (it.ctl && it.ctl.startsWith("ag:")) { this._agToggle(it.ctl); return; }
     switch (it.ctl) {
       case "bgcolor": case "iconcolor": case "wavecolor": case "dotcolor": case "chromakey": case "foldercolor": this._cycleColor(it, 1); return;
       case "bgfit": this._cycleBgFit(1); return;
@@ -439,11 +466,13 @@ export const SettingsMethods = {
       }
       // Folder Color: Off, every folder in its own colours (Folder Color Pick not used)
       case "foldercoloron": u.theme.folderColorAll = u.theme.folderColorAll === false; this._persistUser(); this._applyFolderColor(); break;
+      // the info box's shadows: the date, time and friends' count's, and the clock's (On by default)
+      case "ibshadow": u.theme.infoShadow = u.theme.infoShadow === false; this._persistUser(); this._applyTextLook(); break;
+      case "clockshadow": u.theme.clockShadow = u.theme.clockShadow === false; this._persistUser(); this._applyTextLook(); break;
       case "gamenotitle": s.behavior.gameHideTitle = !s.behavior.gameHideTitle; this._persistSettings(); this._render(); this._onSelect(); break;
       case "gameband": s.behavior.gameBand = s.behavior.gameBand === false; this._persistSettings(); this._render(); this._onSelect(); break;
       case "keepvideos": s.behavior.keepPreloadedVideos = !s.behavior.keepPreloadedVideos; this._persistSettings(); break;
       case "deltemp": s.behavior.deleteTempFiles = !s.behavior.deleteTempFiles; this._persistSettings(); break;
-      case "scrapeauto": this._scrapeCfg().auto = s.scrape.auto === false; this._persistSettings(); break;
       case "cacheapp": s.behavior.cacheInAppDir = !s.behavior.cacheInAppDir;
         // (the Wave Cache saved again in its new place; the Visualizers Cache let go when it's no longer kept)
         this._persistSettings().then(() => moveWaveCache());
@@ -462,6 +491,7 @@ export const SettingsMethods = {
       case "vkb": s.behavior.virtualKeyboard = s.behavior.virtualKeyboard === false; VIRTUAL_KB.on = s.behavior.virtualKeyboard; this._persistSettings(); break;
       case "autostart": s.behavior.autostart = !s.behavior.autostart; call("set_autostart", { enable: s.behavior.autostart }); this._persistSettings(); break;
       case "boot": s.behavior.bootAnimation = !s.behavior.bootAnimation; this._persistSettings(); break;
+      case "bootlook": s.behavior.keepBootLook = s.behavior.keepBootLook === false; this._persistSettings(); break;
       case "startsound": s.behavior.startupSound = s.behavior.startupSound === false; this._persistSettings(); break;
       case "bufsound": s.behavior.bufferingSound = s.behavior.bufferingSound !== true; this.audio.setBuffering(s.behavior.bufferingSound); this._persistSettings(); break;
       case "psplus": {   // the player's own PS Plus mark (card + info box); friends stay as they are
@@ -478,7 +508,8 @@ export const SettingsMethods = {
       case "fpscap": { const i = FPS_CAPS.indexOf(fpsCapOf(s.behavior.fpsCap));
         s.behavior.fpsCap = FPS_CAPS[(i + 1) % FPS_CAPS.length]; this._persistSettings(); this._applyPerformance(); break; }
       case "stillwaves": s.behavior.stillWaves = !s.behavior.stillWaves; this._persistSettings(); this._applyPerformance(); break;
-      case "nomenublur": s.behavior.noMenuBlur = !s.behavior.noMenuBlur; this._persistSettings(); this._applyPerformance(); break;
+      case "menublur": { const i = MENU_BLUR.findIndex((m) => m[0] === menuBlurOf(s.behavior));
+        this._setMenuBlur(MENU_BLUR[(i + 1) % MENU_BLUR.length][0]); break; }
       case "psnstyle": u.theme.psnStyle = u.theme.psnStyle === "modern" ? "original" : "modern"; this._persistUser(); this._applyPsnStyle(); break;
       case "homestyle": u.theme.homeStyle = u.theme.homeStyle === "modern" ? "original" : "modern"; this._persistUser(); this._applyHomeStyle(); break;
       case "friendmode": this._adjustFriendSetting(it.ctl, 1); return;
@@ -612,11 +643,12 @@ export const SettingsMethods = {
       if (p.key === "console") return this._consoleChoices(gameName(g), g.console || "PS3", (v) => { g.console = v; this._gmSave(g.folder, { console: v }); });
       if (p.key === "parentalControl") return list([[0, "-"], ...Array.from({ length: 11 }, (_, i) => [i + 1, `Level ${i + 1}`])], g.parentalControl || 0,
         (v) => { g.parentalControl = v || null; this._gmSave(g.folder, { parentalControl: v || null }); });
-      if (!["isDisc", "optionsBand", "hideTitle"].includes(p.key)) return null;
+      if (!["isDisc", "optionsBand", "hideTitle", "trophies"].includes(p.key)) return null;
     }
     // On / Off and the other two-way settings flip when the other one is chosen
     // (settings with a list of their own that can read "Off" aren't two-way)
-    const listed = ["bgshuffle", "ovshuffle"].includes(ctl);
+    // (options with a list of their own, whatever their value says: Menu Blur's "Off" is one of three)
+    const listed = ["bgshuffle", "ovshuffle", "menublur"].includes(ctl);
     if (ctl === "wavestyle") return { items: [["original", "Original"], ["linkev", "linkev"]].map(([id, label]) => ({ label, apply: () => {
         if (this._waveEngine() !== id) this._toggleSetting(it);
         // (Original chosen again while linkev's is shown in its place: try it again)
@@ -631,6 +663,7 @@ export const SettingsMethods = {
         (v) => { b.dateFormat = v; this.cbs.onDateFormat && this.cbs.onDateFormat(v); this._persistSettings(); });
       case "iconstyle": return list(ICON_STYLES, this._iconStyle(),
         (v) => { t.iconStyle = v; this._persistUser(); this._rememberIconStyle(); this._applyIconStyle(); this._render(); this._onSelect(); });
+      case "menublur": return list(MENU_BLUR, menuBlurOf(b), (v) => this._setMenuBlur(v));
       case "fpscap": return list(FPS_CAPS.map((c) => [c, fpsCapLabel(c)]), fpsCapOf(b.fpsCap),
         (v) => { b.fpsCap = v; this._persistSettings(); this._applyPerformance(); });
       case "resolution": return list(RESOLUTIONS.map((r) => [r, r === "native" ? "Native" : r.replace("x", " × ")]), b.resolution || "native",
@@ -724,8 +757,15 @@ export const SettingsMethods = {
     const cap = fpsCapOf(b.fpsCap);
     window.__xmbFpsCap = cap === "display" ? 0 : +cap;
     this.wave.setStill && this.wave.setStill(!!b.stillWaves);
-    // Remove Menu Blur (styles.css: body.nomenublur)
-    document.body.classList.toggle("nomenublur", !!b.noMenuBlur);
+    // Menu Blur (styles.css: body.nomenublur = Off, body.menublur-all = All)
+    const mb = menuBlurOf(b);
+    document.body.classList.toggle("nomenublur", mb === "off");
+    document.body.classList.toggle("menublur-all", mb === "all");
+  },
+  _setMenuBlur(v) {
+    const b = this.settings.behavior ||= {};
+    b.menuBlur = v; delete b.noMenuBlur;
+    this._persistSettings(); this._applyPerformance();
   },
   _cycleResolution(dir) {
     const b = this.settings.behavior;

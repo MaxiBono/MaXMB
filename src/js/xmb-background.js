@@ -8,6 +8,12 @@ import { customizationOn } from "./themes.js";
 import { isVideoPath, setLayerMedia, setOverlayMedia } from "./chroma.js";
 
 export const BackgroundMethods = {
+  // The look shown: the signed-in user's; before anyone signs in (the intro and
+  // Log In), the last one the system showed (Keep Personalization Options when
+  // Booting, On by default: settings.bootLook), or the original one
+  _lookT() { return this.user?.theme || (this.locked ? this._bootTheme || null : null); },
+  // (the original look before anyone signs in: Keep Personalization Options when Booting Off)
+  _bootPlainNow() { return !this.user && this.locked && this._bootPlain; },
 
   // ------------------------------------------------------------- settings
   // Build the "Wave and Sparkles Personalization" submenu: one adjustable setting per linkev
@@ -99,7 +105,7 @@ export const BackgroundMethods = {
   },
   _waveParamValue(ctl) {
     const m = this._waveParamMeta(ctl); if (!m) return 0;
-    const stored = this.user?.theme?.waveParams?.[`${m.group}:${m.key}`];
+    const stored = this._lookT()?.waveParams?.[`${m.group}:${m.key}`];
     const live = this.wave.getWaveParam ? this.wave.getWaveParam(m.group, m.key) : undefined;
     const v = stored != null ? stored : (live != null ? live : waveParamDefault(m.group, m.key));
     return Number(v) || 0;
@@ -134,7 +140,7 @@ export const BackgroundMethods = {
   // Apply the wave and the user's saved
   // Wave and Sparkles Personalization params to the running renderer.
   _applyWaveStyle() {
-    const t = this.user?.theme || {}, player = this._visPlayer(), bg = this._bgLook(), wl = this._waveLook();
+    const t = this._lookT() || {}, player = this._visPlayer(), bg = this._bgLook(), wl = this._waveLook();
     this._lookApplied = this._lookKey();
     this.wave.setStyle(this._waveEngine());
     const ov = this._origVisFiles();
@@ -161,14 +167,15 @@ export const BackgroundMethods = {
   // the background's own look: a colour square, or the Visualizer Wave (null: Original, a custom colour)
   _bgLook() {
     if (this._visPlayer()) return VISUALIZER_BG;
-    if (!this.user) return null;
+    // (before anyone signs in: the look kept from the last start's, _lookT)
+    if (!this._lookT()) return null;
     const c = this._tcol("backgroundColor");
     return c === "visualizer" ? VISUALIZER_BG : squareLook(c);
   },
   // Wave Color > Visualizer Wave: its wave and sparkles
   _waveLook() {
     if (this._visPlayer()) return this._visWave();
-    return this.user && this._tcol("waveColor") === "visualizer" ? this._visWave() : null;
+    return this._lookT() && this._tcol("waveColor") === "visualizer" ? this._visWave() : null;
   },
   _visWave() { return VISUALIZER_WAVE; },
   // With the Original wave, the Visualizer is the console's own: its Music
@@ -180,7 +187,7 @@ export const BackgroundMethods = {
     const orig = this._waveEngine() === "original" && !(this.wave?.originalFailReason && this.wave.originalFailReason());
     if (!orig) return null;
     if (this._visPlayer()) return ["BACKGROUND", "HDR", "LINE1", "PARTICLES"];
-    if (!this.user) return null;
+    if (!this._lookT()) return null;
     const bgV = this._tcol("backgroundColor") === "visualizer", wV = this._tcol("waveColor") === "visualizer";
     if (bgV && wV) return ["BACKGROUND", "HDR", "LINE1", "PARTICLES"];
     if (bgV) return ["BACKGROUND", "HDR"];
@@ -199,12 +206,12 @@ export const BackgroundMethods = {
   // Wave Style: "original" (the PS3's own wave, the default) or "linkev"
   // (a user's own choice; before anyone signs in, or a user who never chose:
   // the one chosen last on this computer)
-  _waveEngine() { const v = this.user?.theme?.waveEngine || this.settings?.graphics?.waveStyle; return v === "linkev" ? "linkev" : "original"; },
+  _waveEngine() { const v = this._lookT()?.waveEngine || (this._bootPlainNow() ? null : this.settings?.graphics?.waveStyle); return v === "linkev" ? "linkev" : "original"; },
   // The old "Default" wave style is gone: the first time a user signs in, the
   // wave settings they had for "Complex" become the settings, and the old
   // Default-style ones are dropped.
   _migrateWaveSettings() {
-    const t = this.user?.theme;
+    const t = this._lookT();
     if (!t || t.waveV2) return;
     // the old Default style's Wave and Sparkles Personalization values and presets go
     if (t.waveParams) for (const k of Object.keys(t.waveParams)) if (!/^(spline|particle):/.test(k)) delete t.waveParams[k];
@@ -216,7 +223,7 @@ export const BackgroundMethods = {
   // default Gradient Top / Bottom (0.09 / 0.62, a near-black top) go back to
   // the new defaults (values someone changed by hand stay)
   _migrateWaveV3() {
-    const t = this.user?.theme;
+    const t = this._lookT();
     if (!t || t.waveV3) return;
     const wp = t.waveParams || {};
     if (wp["spline:gradientTopMul"] === 0.09) delete wp["spline:gradientTopMul"];
@@ -229,7 +236,7 @@ export const BackgroundMethods = {
     t.waveV3 = true; this._persistUser();
   },
   _applyWaveLook() {
-    const t = this.user?.theme || {};
+    const t = this._lookT() || {};
     const ov = this._origVisFiles();
     if (this._visPlayer()) {
       const vw = this._visWave();
@@ -262,7 +269,8 @@ export const BackgroundMethods = {
   // before is merged in once: a playlist already there under the same name
   // with the same items is kept once, a different one gets "(Overlay)" added)
   _bgPlaylists() {
-    const t = this.user.theme;
+    // (before anyone signs in: the last start's, so its Background Shuffle shuffles them too)
+    const t = this.user ? this.user.theme : (this._lookT() || {});
     const list = (t.bgPlaylists ||= []);
     if (Array.isArray(t.ovPlaylists)) {
       for (const p of t.ovPlaylists) {
@@ -371,7 +379,7 @@ export const BackgroundMethods = {
   },
   // Photo Duration: the background's, or the overlay's own (the background's
   // until it's set)
-  _rotSecs(k) { const t = this.user?.theme || {}; return (k === "ov" ? t.ovInterval || t.bgInterval : t.bgInterval) || 10; },
+  _rotSecs(k) { const t = this._lookT() || {}; return (k === "ov" ? t.ovInterval || t.bgInterval : t.bgInterval) || 10; },
   // a new Photo Duration applies to the picture on screen now
   _retimeRotation() {
     for (const [k, r] of Object.entries(this._rot || {})) {
@@ -382,7 +390,7 @@ export const BackgroundMethods = {
   },
   // (re)start both shuffles from the theme's settings
   async _restartRotation() {
-    const t = this.user?.theme || {};
+    const t = this._lookT() || {};
     const gen = (this._rotGen = (this._rotGen || 0) + 1);
     for (const r of Object.values(this._rot || {})) clearTimeout(r && r.timer);
     this._rot = {};
@@ -434,7 +442,7 @@ export const BackgroundMethods = {
   _fitWallpaper() {
     const el = document.getElementById("wallpaper"), m = el && el.firstElementChild;
     if (!m) return;
-    fitMedia(m, this.user?.theme?.wallpaperFit || "normal", el);
+    fitMedia(m, this._lookT()?.wallpaperFit || "normal", el);
     if (!this._wpResize) { this._wpResize = () => this._fitWallpaper(); window.addEventListener("resize", this._wpResize); }
   },
   // Overlay green-screen strength, 0..1
@@ -495,11 +503,11 @@ export const BackgroundMethods = {
     }
     await this._loadingSettle(); this._loadingDone();
     this._busy = false;
-    if (failed) { this.audio.play("error", 0.4); this._shotFeedback(failed > 1 ? `${failed} videos couldn't be converted (ffmpeg is needed)` : "This video couldn't be converted (ffmpeg is needed)"); }
+    if (failed) { this.audio.play("error", 0.4); this._shotFeedback(failed > 1 ? `${failed} videos couldn't be converted (ffmpeg is needed)` : "This video couldn't be converted (ffmpeg is needed)", "error"); }
     return !failed;
   },
   _applyWallpaper() {
-    const t = this.user?.theme || {};
+    const t = this._lookT() || {};
     // Background / Overlay Shuffle replace the chosen picture while they run
     // (videos the webview can't play as they are use a converted copy)
     // (a theme can hide them while it's on: its Background / Overlay options)

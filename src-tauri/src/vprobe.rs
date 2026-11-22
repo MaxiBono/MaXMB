@@ -136,6 +136,8 @@ fn probe_mp4(path: &Path) -> Option<VideoInfo> {
             b"vide" if v.vcodec.is_empty() => {
                 if let Some((fc, e)) = entry {
                     v.vcodec = mp4_codec(&fc, e);
+                    // (the avcC inside: the picture's profile)
+                    if v.vcodec == "h264" { v.hard_pic = e.windows(4).position(|w| w == b"avcC").and_then(|p| e.get(p + 5)).map(|&p| avc_hard(p)).unwrap_or(false); }
                     v.width = be16(e, 24); v.height = be16(e, 26);
                 }
                 v.vkbps = kb;
@@ -206,6 +208,9 @@ fn mkv_codec(id: &str) -> String {
     else if m("A_PCM") { "pcm_s16le" } else if m("A_MS/ACM") { "wmav2" } else { return id.to_lowercase() }.into()
 }
 
+/// An H.264 profile the webview can't decode: High 10 (110), High 4:2:2 (122), High 4:4:4 (244), CAVLC 4:4:4 (44).
+fn avc_hard(profile: u8) -> bool { matches!(profile, 110 | 122 | 244 | 44) }
+
 fn probe_mkv(path: &Path) -> Option<VideoInfo> {
     let mut f = File::open(path).ok()?;
     let len = f.metadata().ok()?.len();
@@ -231,10 +236,13 @@ fn probe_mkv(path: &Path) -> Option<VideoInfo> {
                     if i != 0xAE { continue; }
                     let (mut ty, mut codec, mut lang, mut name) = (0u64, String::new(), String::new(), String::new());
                     let (mut w, mut h, mut sr, mut ch, mut dflt_dur) = (0u32, 0u32, 0f64, 0u32, 0u64);
+                    let mut cpriv_profile = 0u8;
                     for (k, d) in elems(te) {
                         match k {
                             0x83 => ty = uint(d),
                             0x86 => codec = String::from_utf8_lossy(d).trim_end_matches('\0').to_string(),
+                            // (CodecPrivate: an H.264 picture's profile, from its avcC)
+                            0x63A2 => cpriv_profile = d.get(1).copied().unwrap_or(0),
                             0x22B59C => lang = String::from_utf8_lossy(d).trim_end_matches('\0').to_string(),
                             0x536E => name = String::from_utf8_lossy(d).trim_end_matches('\0').to_string(),
                             0x23E383 => dflt_dur = uint(d),
@@ -246,6 +254,7 @@ fn probe_mkv(path: &Path) -> Option<VideoInfo> {
                     match ty {
                         1 if v.vcodec.is_empty() => {
                             v.vcodec = mkv_codec(&codec); v.width = w; v.height = h;
+                            v.hard_pic = v.vcodec == "h264" && avc_hard(cpriv_profile);
                             if dflt_dur > 0 { v.fps = (1e9 / dflt_dur as f64) as f32; }
                         }
                         2 => {

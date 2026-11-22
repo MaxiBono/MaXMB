@@ -1,0 +1,117 @@
+/* MaXMB's look, part 4 of 8: the Friends column's player and friend cards. The parts are loaded one after another, in this order
+   (index.html), as one stylesheet. */
+/* ---------- Friends section: player + friend cards ----------
+   Two states switched entirely in CSS:
+     • NOT selected  → compact: framed avatar + name + game (no card/bubble).
+     • selected      → full card: coloured rectangle + bubble + trophy + diamond.
+*/
+.item.item-card { transform: translate(0, -50%); }
+.fc-root { zoom: var(--ux, 1); }   /* px sizes are for 1080p: follow the window height */         /* left-anchored, not centered */
+.fc-root { position: relative; display: block; width: 460px; height: 92px;
+  transform: scale(1); transform-origin: left center;
+  transition: transform .2s ease, filter .2s ease; overflow: visible; }
+.item.item-card.sel .fc-root { transform: scale(1.25); }   /* 798x175 @1080 (friends ref) */
+.item.item-card:not(.sel) .fc-root { filter: saturate(0.95) brightness(0.97); }
+
+/* ---- avatar (both states): rounded-square window + plastic sheen ---- */
+.fc-avslot { position: absolute; left: 0; top: 9px; width: 74px; height: 74px;
+  border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 2px var(--card-bg, #3f6fd0); }
+.item.item-card.sel .fc-avslot { box-shadow: none; }
+.fc-avslot .fc-av { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* the default avatars (the ones Users and PSN players share): on the selected
+   card they sit well inside the avatar window, 58 % of it, centred
+   (friends capture BF84E470: a 93 px face in the 161 px window) */
+.fc-glass { position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.46) 0%, rgba(255,255,255,0.18) 32%,
+    rgba(255,255,255,0.04) 49%, rgba(255,255,255,0.0) 60%, rgba(0,0,0,0.12) 100%); }
+/* ---- coloured card rectangle: ONLY when selected ---- */
+.friend-card { display: none; }
+.item.item-card.sel .friend-card { display: block; position: absolute; inset: 0; box-sizing: border-box; -webkit-mask: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Crect width='100' height='100' rx='14' ry='14' fill='%23fff'/%3E%3C/svg%3E"); -webkit-mask-repeat: no-repeat, no-repeat; -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Crect width='100' height='100' rx='14' ry='14' fill='%23fff'/%3E%3C/svg%3E"); mask-repeat: no-repeat, no-repeat; mask-composite: exclude; }
+
+/* ---- top row of the full card: speech bubble + trophy chip (placed in the
+   measured block further down: "the selected player card") ---- */
+.fc-toprow { display: none; }
+.item.item-card.sel .fc-toprow { position: absolute; z-index: 3; }
+/* ---- trophy chip: only inside the full card ---- */
+.fc-trophy { display: none; }
+.fc-trophy-ic { width: 37.5px; height: 37.5px; flex: 0 0 auto; object-fit: contain; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.4)); }
+.item.item-card.sel .fc-trophy-ic, .item.item-card.sel .fc-level { position: relative; }
+.fc-level { font-size: 39.06px; font-weight: 700; color: #f2f2f2; text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+  line-height: 1; white-space: nowrap; }
+
+/* ---- diamond: ONLY the player's own card, and ALWAYS visible (hovered or not) ---- */
+.fc-diamond { display: none; }
+.fc-root.player .fc-diamond { display: block; position: absolute; left: -48px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; background: url('./assets/icons/system/diamond_indicator.png') left center/auto 100% no-repeat; z-index: 4; }
+
+/* ---- name + blue circle ---- */
+/* (the status mark as the console draws it, its texture's own 28 px: 620-647 of the row at 527,
+   capture 79AF1AB0; the name 9 after it) */
+/* (a row not chosen has the screen to its right free: its name and the line under it run on
+   to 760 from its left before they're cut) */
+.fc-name { position: absolute; left: 93px; top: 21px; right: -300px;
+  display: flex; align-items: center; gap: 9px; font-size: 30px; font-weight: 600; z-index: 2; }
+.item.item-card.sel .fc-name { right: 88px; gap: 8px; }
+.item.item-card.sel .fc-dot { width: 22px; height: 22px; }
+.fc-name .fc-nm { min-width: 0; }   /* clip box for the marquee */
+/* the hovered card's name glows like other selected XMB labels */
+/* only the name glows (not the status dot); the padding keeps the glow from
+   being clipped by the marquee box */
+.item.item-card.sel .fc-nm { padding: 14px 12px; margin: -14px -12px; animation: xmbCardNameGlow 3.4s ease-in-out infinite; }
+.fc-dot { width: 28px; height: 28px; flex: 0 0 auto; position: relative; top: -2px; background-position: center; background-size: contain; background-repeat: no-repeat; }
+
+/* ---- info line under the name: game / friend-request / last-sign-in ---- */
+.fc-game { position: absolute; left: 90px; top: 53px; right: -300px; height: 22px;
+  display: flex; align-items: center; font-size: 18px; opacity: 0.92; z-index: 2; }
+/* sits right under the player name (close) on the full card; the game icon's
+   centre is under the status mark's, its text under the name's */
+.item.item-card.sel .fc-game { left: 147.2px; right: 88px; height: 17.6px; }
+.fc-game .fc-gm { min-width: 0; }   /* clip box for the marquee */
+/* text-only info lines (friend request / last sign-in) carry no game icon, so
+   they align with the PSN name text instead of the dot (name text = left+27). */
+.fc-game.fc-info { left: 130px; }
+.item.item-card.sel .fc-game.fc-info { left: 176px; }
+/* (the game mark: the controller alone, 34 x 22 on the screen on both cards -- 617-651 of the
+   row at 527, 79AF1AB0; BBFC6AE7 -- with the status mark's kind of shadow; the box is the
+   controller's own size, so the line is no taller than its text) */
+.fc-gpad { position: relative; display: inline-block; width: 34px; height: 22px; flex: 0 0 auto; margin-right: 6px; opacity: 0.9;
+  filter: drop-shadow(1px 1.6px 1.4px rgba(0,0,0,0.5)); }
+/* (the controller cut out of icon_game.png and made smooth at twice its size on the screen,
+   friend_game_pad.png: drawn from the 128 px picture directly, it came out jagged) */
+.fc-gpad::before { content: ""; position: absolute; inset: 0; background: currentColor;
+  -webkit-mask: url('./assets/icons/system/friend_game_pad.png') 0 0 / 100% 100% no-repeat;
+  mask: url('./assets/icons/system/friend_game_pad.png') 0 0 / 100% 100% no-repeat; }
+.item.item-card.sel .fc-gpad { width: 27.2px; height: 17.6px; margin-right: 3px; top: -1.2px; }
+
+/* ---- speech bubble: only when selected; text vertically centred, large ---- */
+.fc-msg { display: none; }
+.item.item-card.sel .fc-msg { position: static; box-sizing: border-box; font-weight: 400; display: flex; align-items: center; overflow: hidden; white-space: nowrap; }
+/* message text inside the bubble scrolls (marquee) when longer than fits */
+.item.item-card.sel .fc-msg .fc-msgtext { min-width: 0; flex: 1 1 auto; }
+/* the provided tail graphic: a SIBLING of the bubble (so it isn't clipped),
+   sitting UNDER the bubble: its top tucks a few px inside the bubble's bottom
+   (bubble draws over it, z-index 3 > 2) and it reaches down toward the blue
+   circle below. Only shown on the hovered/full card. */
+.fc-tail { display: none; }
+.item.item-card.sel .fc-tail { display: block; position: absolute; pointer-events: none; }
+/* ---- side badges: PS Plus (upper) + message (lower, with number), left of card.
+   They never overlap: the diamond only shows on the player's card, badges only
+   on friend cards, and PS Plus sits above the message badge. ---- */
+/* Positions measured from the Friends capture (CAB30248): compact rows show a
+   ~20 px PS Plus mark touching the top-left of the avatar frame and a ~22 px
+   message mark just left of it; the hovered card shows them ~47 px / ~39 px
+   wide to the left of the card's top half. (Box sizes include the PNGs'
+   transparent padding; the full card is drawn at 1.25x, hence the odd numbers.) */
+.fc-plus { position: absolute; left: -33.5px; top: -1.5px; width: 27px; height: 27px; z-index: 4; pointer-events: none; }
+.item.item-card.sel .fc-plus { left: -54.4px; top: -20.4px; width: 51.2px; height: 51.2px; }
+.fc-plus img { width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.35)); }
+.fc-mbox { position: absolute; left: -43px; top: 7.5px; width: 44px; height: 44px; z-index: 4; pointer-events: none; }
+.item.item-card.sel .fc-mbox { left: -60.4px; top: 10.4px; width: 62.4px; height: 62.4px; }
+.fc-mbox img { width: 100%; height: 100%; object-fit: contain; display: block; opacity: 0.9; }
+/* the number under the message icon shows ONLY on the hovered/selected card;
+   the message + PS Plus icons themselves stay visible in both states. */
+.fc-badge-num { display: none; position: absolute; left: 0; right: 0; top: 78%; text-align: center;
+  font-size: 13px; font-weight: 700; line-height: 1; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.7); }
+.item.item-card.sel .fc-badge-num { display: block; }
+

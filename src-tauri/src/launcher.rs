@@ -127,7 +127,7 @@ pub fn launch(folder: &str, launch_rel: &str, args: &[String]) -> LaunchResult {
             if !args.is_empty() {
                 cmd.args(args);
             }
-            spawn(cmd)
+            spawn(cmd, command_line(&[], args))
         }
         LaunchPlan::Raw { exe, args: line, cwd } => {
             let mut cmd = Command::new(&exe);
@@ -138,14 +138,19 @@ pub fn launch(folder: &str, launch_rel: &str, args: &[String]) -> LaunchResult {
             #[cfg(not(windows))]
             { cmd.args(line.split_whitespace().map(|a| a.trim_matches('"'))); }
             if !args.is_empty() { cmd.args(args); }
-            spawn(cmd)
+            let mut whole = line.clone();
+            let more = command_line(&[], args);
+            if !more.is_empty() { if !whole.is_empty() { whole.push(' '); } whole.push_str(&more); }
+            spawn(cmd, whole)
         }
         LaunchPlan::Shell { target, cwd } => shell_open(&target, Some(&cwd), args),
         LaunchPlan::Script { exe, pre, script, cwd } => {
             let mut cmd = Command::new(exe);
             normal_priority(&mut cmd);
-            cmd.current_dir(&cwd).args(pre).arg(script).args(args);
-            spawn(cmd)
+            cmd.current_dir(&cwd).args(&pre).arg(&script).args(args);
+            let mut all: Vec<String> = pre.clone();
+            all.push(script.display().to_string());
+            spawn(cmd, command_line(&all, args))
         }
         LaunchPlan::Url { url } => shell_open(Path::new(&url), None, args),
     }
@@ -168,12 +173,120 @@ fn fail(msg: &str) -> LaunchResult {
     LaunchResult { ok: false, pid: None, message: msg.to_string() }
 }
 
-fn spawn(mut cmd: Command) -> LaunchResult {
+/// `line`: the same arguments as one command line (for `run_as_admin`).
+#[cfg_attr(not(windows), allow(unused_variables))]
+fn spawn(mut cmd: Command, line: String) -> LaunchResult {
     match cmd.spawn() {
         Ok(child) => LaunchResult { ok: true, pid: Some(child.id()), message: "launched".into() },
+        // (a program that must run as administrator (os error 740, "requires elevation"):
+        // started again through Windows, which asks for the rights first, as a double-click does)
+        #[cfg(windows)]
+        Err(e) if e.raw_os_error() == Some(740) => {
+            crate::log::line("INFO", "game", &format!("{} must run as administrator: Windows asks for the rights",
+                Path::new(cmd.get_program()).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()));
+            run_as_admin(Path::new(cmd.get_program()), &line, cmd.get_current_dir())
+        }
         Err(e) => fail(&format!("Failed to launch: {e}")),
     }
 }
+
+/// Arguments as one Windows command line, each quoted as programs read them back.
+fn command_line(first: &[String], args: &[String]) -> String {
+    first.iter().chain(args.iter()).map(|a| quote_arg(a)).collect::<Vec<_>>().join(" ")
+}
+fn quote_arg(a: &str) -> String {
+    if !a.is_empty() && !a.contains([' ', '\t', '\n', '"']) { return a.to_string(); }
+    let mut out = String::from('"');
+    let mut slashes = 0usize;
+    for c in a.chars() {
+        match c {
+            '\\' => { slashes += 1; }
+            '"' => { out.push_str(&"\\".repeat(slashes * 2 + 1)); out.push('"'); slashes = 0; }
+            _ => { out.push_str(&"\\".repeat(slashes)); out.push(c); slashes = 0; }
+        }
+    }
+    out.push_str(&"\\".repeat(slashes * 2));
+    out.push('"');
+    out
+}
+
+/// Starts `exe` as administrator: Windows shows its "Do you want to allow this app to make
+/// changes?" prompt first (`ShellExecuteExW`, "runas"). Waits for the answer (not on the
+/// window's thread: `launch_game` runs on a thread of its own).
+#[cfg(windows)]
+#[allow(non_snake_case)]
+fn run_as_admin(exe: &Path, params: &str, cwd: Option<&Path>) -> LaunchResult {
+    use std::os::windows::ffi::OsStrExt;
+    #[repr(C)]
+    struct SHELLEXECUTEINFOW {
+        cbSize: u32, fMask: u32, hwnd: isize, lpVerb: *const u16, lpFile: *const u16, lpParameters: *const u16,
+        lpDirectory: *const u16, nShow: i32, hInstApp: isize, lpIDList: *mut core::ffi::c_void, lpClass: *const u16,
+        hkeyClass: isize, dwHotKey: u32, hIconOrMonitor: isize, hProcess: isize,
+    }
+    #[cfg(target_pointer_width = "64")]
+    const _: () = assert!(std::mem::size_of::<SHELLEXECUTEINFOW>() == 112);
+    #[link(name = "shell32")]
+    extern "system" { fn ShellExecuteExW(info: *mut SHELLEXECUTEINFOW) -> i32; }
+    #[link(name = "kernel32")]
+    extern "system" { fn GetProcessId(h: isize) -> u32; fn CloseHandle(h: isize) -> i32; fn GetLastError() -> u32; }
+    #[link(name = "user32")]
+    extern "system" { fn GetForegroundWindow() -> isize; }
+    const SEE_MASK_NOCLOSEPROCESS: u32 = 0x40;
+    const SEE_MASK_NOASYNC: u32 = 0x100;
+    const SW_SHOWNORMAL: i32 = 1;
+    const ERROR_CANCELLED: u32 = 1223;
+    let w = |s: &std::ffi::OsStr| s.encode_wide().chain(std::iter::once(0)).collect::<Vec<u16>>();
+    let verb = w("runas".as_ref());
+    let file = w(exe.as_os_str());
+    let par = w(params.as_ref());
+    let dir = cwd.map(|d| w(d.as_os_str()));
+    let mut info = SHELLEXECUTEINFOW {
+        cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32, fMask: SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC,
+        // (the app's window in front: the prompt shows over it, not as a blinking taskbar button)
+        hwnd: unsafe { GetForegroundWindow() }, lpVerb: verb.as_ptr(), lpFile: file.as_ptr(),
+        lpParameters: if params.is_empty() { std::ptr::null() } else { par.as_ptr() },
+        lpDirectory: dir.as_ref().map(|d| d.as_ptr()).unwrap_or(std::ptr::null()), nShow: SW_SHOWNORMAL,
+        hInstApp: 0, lpIDList: std::ptr::null_mut(), lpClass: std::ptr::null(), hkeyClass: 0, dwHotKey: 0,
+        hIconOrMonitor: 0, hProcess: 0,
+    };
+    if unsafe { ShellExecuteExW(&mut info) } == 0 {
+        let err = unsafe { GetLastError() };
+        if err == ERROR_CANCELLED { return fail("Administrator rights weren't given: the game wasn't started."); }
+        return fail(&format!("Failed to launch as administrator: os error {err}"));
+    }
+    let pid = if info.hProcess != 0 { let p = unsafe { GetProcessId(info.hProcess) }; unsafe { CloseHandle(info.hProcess); } (p != 0).then_some(p) } else { None };
+    LaunchResult { ok: true, pid, message: "launched as administrator".into() }
+}
+
+/// A game's program that closes within a minute of being started (one that refuses to
+/// start, say): how long it ran and how it ended (its exit code) go in the log.
+#[cfg(windows)]
+pub fn note_quick_exit(pid: u32, name: String) {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> isize;
+        fn WaitForSingleObject(h: isize, ms: u32) -> u32;
+        fn GetExitCodeProcess(h: isize, code: *mut u32) -> i32;
+        fn CloseHandle(h: isize) -> i32;
+    }
+    const SYNCHRONIZE: u32 = 0x0010_0000;
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const WAIT_OBJECT_0: u32 = 0;
+    std::thread::spawn(move || unsafe {
+        let h = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h == 0 { return; }
+        let t = std::time::Instant::now();
+        if WaitForSingleObject(h, 60_000) == WAIT_OBJECT_0 {
+            let mut code = 0u32;
+            let got = GetExitCodeProcess(h, &mut code) != 0;
+            crate::log::line("WARN", "game", &format!("\"{name}\"'s program (pid {pid}) closed {:.1} s after it was started, exit code {}",
+                t.elapsed().as_secs_f64(), if got { format!("0x{code:08X}") } else { "unknown".into() }));
+        }
+        CloseHandle(h);
+    });
+}
+#[cfg(not(windows))]
+pub fn note_quick_exit(_pid: u32, _name: String) {}
 
 /// A game is starting: let its window take the foreground when it opens (the
 /// app stays where it is, showing black, until then).
@@ -226,6 +339,17 @@ fn shell_open(target: &Path, cwd: Option<&Path>, _args: &[String]) -> LaunchResu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admin_command_line_quotes_as_programs_read_it() {
+        // (what a game started as administrator gets: the same arguments it would have had)
+        assert_eq!(command_line(&[], &[]), "");
+        assert_eq!(command_line(&["-a".into()], &["b c".into()]), r#"-a "b c""#);
+        assert_eq!(quote_arg(""), r#""""#);
+        assert_eq!(quote_arg(r"C:\Games\My Game\"), r#""C:\Games\My Game\\""#);
+        assert_eq!(quote_arg(r#"say "hi""#), r#""say \"hi\"""#);
+        assert_eq!(quote_arg(r"C:\NoSpace\x.lua"), r"C:\NoSpace\x.lua");
+    }
     use std::fs;
 
     #[test]

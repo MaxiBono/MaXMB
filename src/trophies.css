@@ -1,0 +1,253 @@
+/* Trophies (trophies.js): Trophy Collection's rows, a trophy's information,
+   and the pop-up ("You have earned a trophy." and every notification of the
+   menus). Sizes from the console's captures (1920 x 1080). */
+
+/* ---- the pop-up: the console's box, 422 x 102, 85 from the top and 103 from
+   the right (on a 1920 x 1080 screen; the same proportions on any screen).
+   --tu: one pixel of the capture. In its own window during a game
+   (popup.html) the box fills the window. */
+:root { --tu: calc(100vh / 1080); --tx: calc(100vw / 1920); }
+.tpop { position: fixed; top: calc(85 * var(--tu)); right: calc(103 * var(--tu)); z-index: 95;
+  height: calc(102 * var(--tu)); min-width: calc(422 * var(--tu)); max-width: calc(1100 * var(--tu)); box-sizing: border-box;
+  display: flex; align-items: center; padding: 0 calc(24 * var(--tu)) 0 calc(12 * var(--tu));
+  /* (the console's box, from its capture: grey, a touch lighter toward the
+     bottom, with a lighter band all around its edges; no shadow) */
+  background: linear-gradient(rgba(56, 59, 54, 0.97), rgba(64, 64, 61, 0.97));
+  border-radius: calc(6 * var(--tu));
+  box-shadow: inset 0 0 0 calc(2.5 * var(--tu)) rgba(255, 255, 255, 0.045),
+    inset 0 0 0 calc(1 * var(--tu)) rgba(255, 255, 255, 0.03);
+  color: #fff; font-size: calc(22.5 * var(--tu) * var(--pop-scale, 1)); line-height: 1.15; pointer-events: none;
+  text-shadow: none;
+  opacity: 0; }
+/* a quick fade in and out (every notification and trophy pop-up, in the menus
+   and over a game): animations, so a box just made fades in too */
+.tpop.on { opacity: 1; animation: tpopIn .2s ease-out both; }
+.tpop.off { opacity: 0; animation: tpopOut .2s ease-in both; }
+@keyframes tpopIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tpopOut { from { opacity: 1; } to { opacity: 0; } }
+/* a trophy's: the console's 422 x 102. A name longer than "You have earned a trophy."
+   (the console's captures: BUZZ!'s "You've got the whole Quiz World, in your hands", the
+   main one, and STAR OCEAN's Platinum, 1920 x 1080): the box 535 wide, the name's words
+   going on to the right until the next one doesn't fit before the box's end (tpop.js popFit:
+   --tl, 1.345 times the first line's width, 400 on 1080 lines), then under the first
+   line from the text's left edge. Two lines of the name or more (tpop-multi): the first
+   line's baseline 33 under the box's top, the lines 28.33 apart (STAR OCEAN's), and under
+   the last one the space the captures have (popFit: two lines, BUZZ!'s; three or more,
+   STAR OCEAN's) -- the icon and the grade glyph where they are */
+.tpop:not(.tpop-plain) { width: calc(422 * var(--tu)); height: auto; min-height: calc(102 * var(--tu));
+  align-items: flex-start; padding-right: calc(2 * var(--tu)); }
+.tpop.tpop-long:not(.tpop-plain) { width: calc(535 * var(--tu)); }
+.tpop.tpop-long:not(.tpop-plain) .tpop-text { width: var(--tl, calc(400 * var(--tu))); }
+.tpop.tpop-multi:not(.tpop-plain) { --lh2: 28.33; }
+.tpop.tpop-multi:not(.tpop-plain) .tpop-text { margin-top: calc(var(--ml1, 4.3) * var(--tu) - var(--tb, 0px)); }
+.tpop.tpop-multi:not(.tpop-plain) .tpop-l1 { height: calc(var(--hl1, 25.9) * var(--tu)); }
+/* (--tb: a PS3 theme's notification picture's border, the places kept inside it;
+   --tp: the name's first line box, 2 under the line's top as a one-line name's) */
+.tpop:not(.tpop-plain) { --tp: calc(2 * var(--tu) - (var(--lh2, 29) * var(--tu) - 22.5 * 1.15 * var(--tu)) * var(--pop-scale, 1) / 2); }
+.tpop:not(.tpop-plain) .tpop-icon { margin: calc(11 * var(--tu) - var(--tb, 0px)) 0; }
+.tpop:not(.tpop-plain) .tpop-text { margin-top: calc(7 * var(--tu) - var(--tb, 0px)); margin-bottom: calc(0px - var(--tp) - var(--tb, 0px));
+  width: calc(312 * var(--tu)); flex: none; }
+.tpop-icon { width: calc(80 * var(--tu)); height: calc(80 * var(--tu)); flex: none; display: flex; align-items: center; justify-content: center; }
+.tpop-icon img { max-width: 100%; max-height: 100%; object-fit: contain; }
+/* each letter's own shadow (as the capture's: soft, down and to the right;
+   not on the grade glyph) */
+.tpop-text { margin-left: calc(16 * var(--tu)); white-space: nowrap; min-width: 0; }
+.tpop-l1, .tpop-name, .tpop-one { filter: drop-shadow(0 0 calc(1 * var(--tu)) rgba(0,0,0,0.2))
+    drop-shadow(calc(2 * var(--tu)) calc(3 * var(--tu)) calc(2.5 * var(--tu)) rgba(0,0,0,0.75)); }
+/* (the two lines where the capture has them, a little under the middle) */
+.tpop-text:not(.tpop-one) { padding-top: calc(10 * var(--tu)); }
+.tpop-l1 { height: calc(28 * var(--tu)); }
+.tpop-l2 { min-height: calc(30 * var(--tu)); padding-top: var(--tp); box-sizing: border-box;
+  white-space: normal; overflow-wrap: break-word; line-height: calc(var(--lh2, 29) * var(--tu) * var(--pop-scale, 1)); }
+/* (the glyph at the top of the first line, as a one-line name's) */
+.tpop-word { white-space: nowrap; }
+/* (a word longer than a whole line: cut where the line ends, tpop.js popFit) */
+.tpop-word.tpop-cut { white-space: normal; overflow-wrap: anywhere; word-break: break-all; }
+.tpop-glyph { display: inline-block; vertical-align: top; position: relative; top: calc(0px - var(--tp));
+  height: calc(25 * var(--tu)); width: calc(25 * var(--tu)); margin: 0 calc(-1 * var(--tu)) 0 calc(-2 * var(--tu)); }
+/* (its width set, the pictures being square: the name's lines come out the same before it has loaded) */
+/* a notification of the menus (the console's, from its captures): the "i"
+   (or the "!" when something didn't go as expected) on the left, its middle
+   51 down and 52 in; the text from 108 in, 27 apart, wrapping; one or two
+   lines keep the 102 height, more lines make the box taller downward */
+.tpop.tpop-plain { height: auto; min-height: calc(102 * var(--tu)); width: auto; min-width: calc(422 * var(--tu));
+  padding: calc(13.5 * var(--tu)) calc(28 * var(--tu)) calc(13.5 * var(--tu)) calc(108 * var(--tu)); }
+.tpop-ntc { position: absolute; left: calc(12.5 * var(--tu)); top: calc(11.5 * var(--tu));
+  width: calc(79 * var(--tu)); height: calc(79 * var(--tu)); }
+.tpop-text.tpop-one { margin-left: 0; white-space: normal; line-height: calc(27 * var(--tu) * var(--pop-scale, 1));
+  max-width: calc(440 * var(--tu) * var(--pop-scale, 1)); overflow-wrap: anywhere; }
+/* a PS3 theme's notification picture (as before) */
+:root.tnotify .tpop { --tb: 1.4vh; background: none; box-shadow: none; border: var(--tb) solid transparent; border-radius: 0;
+  border-image: var(--tnotify) 22 fill / 1.4vh stretch; }
+
+/* ---- Trophy Collection: the games (IMG refs: the selected game's icon on the
+   spine, its title 185 px right of it, the progress at 1632 px) ---- */
+.item.item-tgame .item-label.il-game,
+.item.item-tgame.sel .item-label.il-game,
+.item.item-tgame.sel.ar-item .item-label.il-game { margin-left: calc(185 * var(--tx)); }
+.tg-prog { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; }
+/* (the percentage centred over its bar, 899 to 1048; the Platinum mark before it) */
+.tg-num { position: absolute; left: calc(973.5 * var(--tx)); top: 0; transform: translate(-50%, -50%);
+  display: flex; align-items: center; white-space: nowrap; font-size: calc(25 * var(--tu)); }
+.tg-plat { position: absolute; right: 100%; top: 50%; transform: translateY(-50%); height: calc(30 * var(--tu)); width: auto; margin-right: calc(6 * var(--tu)); }
+/* (the media player's progress bar, in blue: the same track, rounded ends,
+   glossy fill and its lighter edge) */
+.tg-bar { position: absolute; left: calc(899 * var(--tx)); top: calc(21 * var(--tu)); width: calc(149 * var(--tx));
+  height: calc(11 * var(--tu)); box-sizing: border-box; overflow: hidden; border-radius: 999px;
+  border: 1px solid rgba(205,205,205,0.6);
+  background: linear-gradient(180deg, rgba(255,255,255,0.52) 0%, rgba(255,255,255,0.2) 16%, rgba(255,255,255,0.18) 32%,
+    rgba(255,255,255,0.27) 52%, rgba(255,255,255,0.3) 68%, rgba(255,255,255,0.38) 80%, rgba(255,255,255,0.58) 90%, rgba(255,255,255,0.5) 100%);
+  opacity: 0; transition: opacity .2s ease; }
+.tg-fill { height: 100%; border-radius: 999px 0 0 999px;
+  background: linear-gradient(180deg, #113e76 0%, #6fcbff 11%, #157dde 24%, #0453ae 37%, #0b4ea2 50%, #003288 62%, #2f6ab1 74%, #87bee4 87%, #27527e 100%);
+  box-shadow: inset -1px 0 0 #3277c0; }
+.item.item-tgame.sel .tg-bar { opacity: 1; }
+
+/* ---- a game's trophies: the picture 58 px right of the spine (157 px chosen,
+   77 px not), the grade before the title at 787 px, the title at 822 px ---- */
+.item .art-frame.troph-art, .item.sel .art-frame.troph-art, .item.item-anchor .art-frame.troph-art,
+.item .art-frame.troph-art.ar-fit, .item.sel .art-frame.troph-art.ar-fit {
+  aspect-ratio: 1; width: calc(77 * var(--tu)); left: calc(58 * var(--tx)); background: none; overflow: visible; }
+.item.sel .art-frame.troph-art, .item.sel .art-frame.troph-art.ar-fit { width: calc(157 * var(--tu)); }
+.art-frame.troph-art .art-img { object-fit: contain; }
+/* an add-on's (DLC) trophy not won yet: the add-on mark over its picture's top left corner
+   (capture 324F40F6, on its 71 and 143 px tiles: a circle 32% of the picture across, starting
+   6.2% of it before the picture's left and top); won, it's shown as any other */
+/* (and the same on the trophy's Information, over its picture: .tinfo-icon) */
+.art-frame.troph-addon::before, .tinfo-icon.troph-addon::before { content: ""; position: absolute; left: -6.9%; top: -6.9%; width: 33.4%; aspect-ratio: 1; z-index: 3; pointer-events: none;
+  background: url("./assets/icons/system/trophy_tex_addon.png") center / 100% 100% no-repeat; }
+/* not earned (hidden or not): the padlock over the grey picture (Not Unlocked refs) */
+.troph-locked { position: relative; }
+/* (the lock: its size from the console's captures, measured by pixel on
+   their 72 px tiles (its body 56% of the picture's width, from 41 to 80% of
+   its height), centred across the picture; its own transparency, the
+   picture showing through) */
+/* (drawn as one picture over the whole tile -- the lock set in place inside it, tex_lock_tile.svg --:
+   a lock box of its own was rounded to whole pixels apart from the picture, so while the tile grew
+   or shrank (a trophy chosen) the lock shook by a pixel or two against it; the same tile is
+   always laid out like the picture, the lock in it never moves) */
+.art-frame.troph-locked::after, .tinfo-icon.troph-locked::after { content: ""; position: absolute; inset: 0;
+  background: url("./assets/icons/trophy/tex_lock_tile.svg") center / 100% 100% no-repeat; opacity: 1; pointer-events: none; }
+/* (the chosen trophy's row keeps one size while its picture grows (77 to 157) inside it: its title
+   and grade, placed from the row's middle, were placed again at every step of the growing -- half
+   the row's size moved one way, the row's own centring the other -- and landed on a pixel either
+   side, so they shook for a moment as the cursor came to rest; the chosen picture's own size, so the
+   picture ends where it always did -- a size of its own made the picture itself jump at the end) */
+/* (a game's trophies: no slide of their own -- the list's is theirs, xmb.js _smoothXY, in whole
+   pixels --, so no bounce past their place and back whenever they're placed again) */
+.item.item-trophy { transition: opacity 0.28s ease, translate 0.2s ease; }
+.item.item-trophy.sel { width: calc(157 * var(--tu)); height: calc(157 * var(--tu));
+  /* (centred on its place the row would sit half a pixel down -- 157 / 2 --: the last of its slide
+     into place then crossed a pixel's middle, and its title, description and date moved together
+     by a pixel just as it settled; half a pixel lower, it ends on a whole one) */
+  transform: translate(-50%, calc(-50% + 0.5px)); }
+/* (the same for the chosen game: its picture grows to its own shape, always as tall, inside a row
+   of the widest one's size) */
+.item.item-tgame.sel { width: 16.56vw; height: 9.315vw; }
+.item.item-trophy .item-label { margin-left: calc(162 * var(--tx)); display: grid; grid-template-columns: auto auto;
+  column-gap: calc(10 * var(--tx)); align-items: start; }
+.item.item-trophy .item-label .il-body { grid-column: 2; }
+/* (its width set, as its height -- the grade pictures are square --: a row drawn anew had the name
+   start where the glyph's picture wasn't there yet, and move over once it was, for every glyph) */
+.tr-glyph { height: calc(25 * var(--tu)); width: calc(25 * var(--tu)); margin-top: calc(4 * var(--tu)); }
+
+/* ---- a trophy's information (✕): the two rules, the picture, Title / Grade /
+   Earned / Details, ○ Back (as the console's screen) ---- */
+.tinfo { position: fixed; inset: 0; z-index: 70; display: none; }
+.tinfo.show { display: block; }
+.tinfo::before, .tinfo::after { content: ""; position: absolute; left: 0; right: 0; height: 1px; background: rgba(255,255,255,0.85); }
+.tinfo::before { top: calc(203 * var(--tu)); } .tinfo::after { top: calc(884 * var(--tu)); }
+.tinfo-icon { position: absolute; left: calc(841 * var(--tx)); top: calc(360 * var(--tu)); width: calc(153 * var(--tu)); height: calc(153 * var(--tu));
+  transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; }
+/* (a small picture, as Steam's 64 px icons, is enlarged to the box as in the
+   lists, not shown at its own size) */
+.tinfo-icon img { width: 100%; height: 100%; object-fit: contain; }
+.tinfo-rows { position: absolute; left: 0; right: 0; top: calc(483 * var(--tu)); font-size: calc(25 * var(--tu)); }
+.tinfo-row { display: flex; align-items: flex-start; min-height: calc(40.5 * var(--tu)); line-height: calc(32 * var(--tu));
+  text-shadow: 0 0.12vh 0.35vh rgba(0,0,0,0.45); }
+.tinfo-k { width: calc(822 * var(--tx)); text-align: right; flex: none; white-space: nowrap; }
+.tinfo-v { margin-left: calc(38 * var(--tx)); max-width: calc(820 * var(--tx)); display: flex; flex-wrap: wrap; align-items: center; }
+.tinfo-glyph { height: calc(27 * var(--tu)); width: auto; margin-right: calc(4 * var(--tu)); }
+.tinfo-foot { position: absolute; left: calc(1193 * var(--tx)); top: calc(912 * var(--tu)); transform: translate(-50%, -50%);
+  font-size: calc(23 * var(--tu)); display: flex; gap: 0.6vw; }
+.tinfo-foot > span { display: inline-flex; align-items: center; gap: 0.6vw; cursor: pointer; }
+
+/* ---- the trophy sync (entering Trophy Collection; the console's captures):
+   the XMB blurred behind the two lines, the text from 500 px, the progress
+   bar 1140 px wide in the middle (the Media Player's bar), its percentage
+   under it, ○ Cancel under the lower line ---- */
+/* (the background blurred through body.menu-open, as the other full-screen
+   menus: no backdrop-filter, which WebView2 could show black) */
+.tsync { position: fixed; inset: 0; z-index: 69; background: rgba(10,12,20,0.18); opacity: 0; transition: opacity .2s ease; }
+.tsync.on { opacity: 1; }
+.tsync::before, .tsync::after { content: ""; position: fixed; left: 0; right: 0; height: 1.5px; background: rgba(255,255,255,0.85); pointer-events: none; }
+.tsync::before { top: 18.5vh; }
+.tsync::after { top: 81.5vh; }
+.tsync-text { position: absolute; left: 50%; transform: translateX(-50%); white-space: nowrap; top: 41.55vh; font-size: 2.3vh; line-height: 3.1vh; color: var(--text, #fff);
+  text-shadow: 0 0.15vh 0.4vh rgba(0,0,0,0.5); }
+.tsync-bar { position: absolute; left: 20.3vw; width: 59.4vw; top: 53.75vh; height: 1.11vh; box-sizing: border-box; overflow: hidden; border-radius: 999px;
+  border: 1px solid rgba(205,205,205,0.6);
+  background: linear-gradient(180deg, rgba(255,255,255,0.52) 0%, rgba(255,255,255,0.2) 16%, rgba(255,255,255,0.18) 32%,
+    rgba(255,255,255,0.27) 52%, rgba(255,255,255,0.3) 68%, rgba(255,255,255,0.38) 80%, rgba(255,255,255,0.58) 90%, rgba(255,255,255,0.5) 100%); }
+.tsync-fill { width: 0; height: 100%; border-radius: 999px 0 0 999px; transition: width .2s linear;
+  background: linear-gradient(180deg, #607611 0%, #fbff6f 11%, #c0de15 24%, #8cae04 37%, #80a20b 50%, #5f8800 62%, #95b12f 74%, #dde487 87%, #6f7e27 100%);
+  box-shadow: inset -1px 0 0 #a6c032; }
+.tsync-pct { position: absolute; left: 0; right: 0; top: 55.5vh; text-align: center; font-size: 2.13vh; line-height: 3vh; color: var(--text, #fff);
+  text-shadow: 0 0.15vh 0.4vh rgba(0,0,0,0.5); }
+.tsync-foot { position: absolute; left: 63.4vw; top: 84vh; cursor: pointer; }
+
+
+/* ---- Trophy Collection: the selected game's format under its title
+   (IMG_3852 / IMG_3856: PS3, PS4..., 86 x 22 px, its left edge with the title's) ---- */
+.tg-fmt { display: none; }
+.item.item-tgame.sel .tg-fmt { display: block; height: calc(22 * var(--tu)); margin-top: calc(1 * var(--tu)); line-height: 0; }
+.tg-fmt .game-fmt { position: static !important; transform: none !important; left: auto; top: auto; height: 100% !important; width: auto !important; opacity: 1 !important; }
+.tg-fmt .game-fmt-txt { display: inline-flex; align-items: center; justify-content: center; aspect-ratio: 110 / 28; background-size: 100% 100%; }
+
+/* ---- a game's Information (△ > Information, IMG_3850): its picture centred
+   at the top, the rows under it, the grades' counts on their own row ---- */
+.tinfo-icon.tinfo-gicon { width: calc(320 * var(--tu)); height: calc(176 * var(--tu)); top: calc(372 * var(--tu)); left: calc(877 * var(--tx)); }
+.tinfo-rows.tinfo-grows { top: calc(517 * var(--tu)); }
+.tinfo-cnt { display: inline-flex; align-items: center; margin-right: calc(26 * var(--tu)); }
+.tinfo-cnt .tinfo-glyph { margin-right: calc(8 * var(--tu)); }
+
+/* ---- the user's mini card at the top right of Trophy Collection (signed in;
+   8107621731: 237 x 144 px at 1560, 93 on 1920 x 1080), in the card's colour,
+   glossy at the top as the player cards ---- */
+#tmini { position: fixed; left: calc(1560 * var(--tx)); top: calc(93 * var(--tu)); width: calc(237 * var(--tu)); height: calc(144 * var(--tu));
+  z-index: 40; border-radius: calc(12 * var(--tu)); overflow: hidden; display: none; color: #fff; pointer-events: none;
+  /* (shaded as the player cards, IMG_3851: the card's colour, a light over its top half that ends
+     on a line, the plain colour under it; its outline the card's colour as it is from its middle
+     down, not a lighter one -- the light stays inside it, so the top edge too is that colour) */
+  background: var(--card-bg, #868485);
+  box-shadow: 0 0 calc(2 * var(--tu)) rgba(0,0,0,0.45), 0 calc(2 * var(--tu)) calc(8 * var(--tu)) rgba(0,0,0,0.35); }
+#tmini::before { content: ""; position: absolute; left: calc(2 * var(--tu)); right: calc(2 * var(--tu)); top: calc(2 * var(--tu)); height: calc(72 * var(--tu));
+  border-radius: calc(10 * var(--tu)) calc(10 * var(--tu)) 0 0; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.6) 0, rgba(255,255,255,0.5) calc(2 * var(--tu)), rgba(255,255,255,0.08) calc(71 * var(--tu)), rgba(255,255,255,0) calc(72 * var(--tu))); }
+/* (its end as the small card's light ends: 0.08, then gone -- no brighter edge drawing a line) */
+/* (the avatar under the light, the words over it) */
+#tmini::before { z-index: 1; }
+#tmini > * { z-index: 2; }
+#tmini.show { display: block; }
+body.tmini-on #infobox { visibility: hidden; }
+body.menu-open #tmini { visibility: hidden; }
+/* (measured on IMG_3851 set straight, in the card's own 237 x 144: the avatar whole, square
+   cornered, with no box of its own, 88 wide from 10.5, 11, the card's light over it; the star 41
+   wide, its top point at 14, above the level's top at 19; the level centred at 190; the
+   percentage centred over the bar, 110 to 222 at 88; the name's capitals from 115) */
+#tmini .tm-av { position: absolute; left: calc(10.5 * var(--tu)); top: calc(11 * var(--tu)); width: calc(88 * var(--tu)); height: calc(89 * var(--tu));
+  object-fit: cover; border-radius: 0; z-index: 0; }
+/* (a default (stock) avatar: inside the avatar's place with the same wide margin as on the
+   Users' and the PSN cards -- 57.8% of it, 21.1% from its edges) */
+#tmini .tm-av.tm-stock { left: calc((10.5 + 88 * 0.211) * var(--tu)); top: calc((11 + 89 * 0.211) * var(--tu));
+  width: calc(88 * 0.578 * var(--tu)); height: calc(89 * 0.578 * var(--tu)); object-fit: contain; }
+#tmini .tm-star { position: absolute; left: calc(103 * var(--tu)); top: calc(9.5 * var(--tu)); width: calc(54 * var(--tu)); height: calc(54 * var(--tu)); object-fit: contain;
+  filter: drop-shadow(calc(1 * var(--tu)) calc(1.6 * var(--tu)) calc(1.6 * var(--tu)) rgba(0,0,0,0.45)); }
+#tmini .tm-lv { position: absolute; left: calc(147 * var(--tu)); width: calc(84 * var(--tu)); top: calc(14.5 * var(--tu)); text-align: center;
+  font-size: calc(40.5 * var(--tu)); line-height: calc(48 * var(--tu)); text-shadow: calc(1 * var(--tu)) calc(1.6 * var(--tu)) calc(2 * var(--tu)) rgba(0,0,0,0.5); }
+#tmini .tm-pct { position: absolute; left: calc(110 * var(--tu)); width: calc(112 * var(--tu)); top: calc(65.5 * var(--tu)); text-align: center;
+  font-size: calc(21 * var(--tu)); line-height: calc(24 * var(--tu)); text-shadow: calc(1 * var(--tu)) calc(1.4 * var(--tu)) calc(1.6 * var(--tu)) rgba(0,0,0,0.5); }
+/* (the system's media progress bar, its fill in the profile's gold: styles.css .pp-lfill) */
+#tmini .mp2-bar.tm-bar { position: absolute; left: calc(110 * var(--tu)); width: calc(112 * var(--tu)); top: calc(88.5 * var(--tu)); height: calc(11 * var(--tu)); margin: 0; box-sizing: border-box; }
+#tmini .tm-id { position: absolute; left: calc(8 * var(--tu)); right: calc(8 * var(--tu)); top: calc(111.5 * var(--tu)); text-align: center;
+  font-size: calc(23 * var(--tu)); line-height: calc(30 * var(--tu)); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: calc(1 * var(--tu)) calc(1.4 * var(--tu)) calc(1.6 * var(--tu)) rgba(0,0,0,0.5); }

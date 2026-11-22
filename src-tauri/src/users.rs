@@ -7,15 +7,19 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn load(path: &Path) -> UsersFile {
-    fs::read_to_string(path)
+    let mut f: UsersFile = fs::read_to_string(path)
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    // (each user's saved Sign-In -- its ID and password --: written plain, to be read in the file
+    // itself; one sealed by an older version (secret.rs) is opened, and written plain when saved)
+    for u in f.users.iter_mut() { if let Some(v) = u.psn_saved.as_ref() { u.psn_saved = Some(crate::secret::open_value(v)); } }
+    f
 }
 
 pub fn save(path: &Path, file: &UsersFile) -> Result<(), String> {
     let json = serde_json::to_string_pretty(file).map_err(|e| e.to_string())?;
-    fs::write(path, json).map_err(|e| e.to_string())
+    crate::paths::write_whole(path, json).map_err(|e| e.to_string())
 }
 
 fn now_secs() -> String {
@@ -25,6 +29,16 @@ fn new_id() -> String {
     format!("u{}", SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0))
 }
 
+/// A new user's Theme Settings: every one at its default. The Icon Style and the Wave Style are
+/// written out, as a user who has none of their own is drawn with the ones last used on this
+/// computer (the look the system starts with), and a new user starts from the defaults.
+fn new_user_theme() -> ThemeSettings {
+    let mut t = ThemeSettings::default();
+    t.icon_style = Some("glasslive".into());
+    t.extra.insert("waveEngine".into(), serde_json::Value::String("original".into()));
+    t
+}
+
 pub fn create(path: &Path, name: &str, avatar: &str) -> Result<User, String> {
     let mut file = load(path);
     let user = User {
@@ -32,7 +46,7 @@ pub fn create(path: &Path, name: &str, avatar: &str) -> Result<User, String> {
         name: name.trim().to_string(),
         avatar: avatar.to_string(),
         psn_account_id: None,
-        theme: ThemeSettings::default(),
+        theme: new_user_theme(),
         sound_enabled: true,
         music_enabled: true,
         bg_music: None,

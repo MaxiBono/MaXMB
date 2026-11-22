@@ -10,13 +10,6 @@ import { monthBackground } from "./monthbg.js";
 
 let _shared = null;
 export function ps3Background() { return _shared || (_shared = new PS3Background()); }
-// (another Wave Style chosen: its background renderer and pictures let go; made again if needed)
-export function dropPs3Background() {
-  const b = _shared; _shared = null;
-  if (!b) return;
-  b.ok = false; b.pixels = null;
-  try { b.r && b.r.gl && b.r.gl.getExtension("WEBGL_lose_context")?.loseContext(); } catch (e) {}
-}
 
 class PS3Background {
   constructor() {

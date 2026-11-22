@@ -11,15 +11,15 @@
 // users (xmb-users.js), friends (xmb-friends.js), PlayStation®Network
 // (xmb-psn.js), the Internet Browser (xmb-browser.js); sections (sections.js);
 // what they share is in xmb-shared.js.
-import { AvatarPicker, ColorPicker, Confirm, GameInfoPanel, KeybindMenu, ListPicker, MusicPlayer, PhotoGrid, PlaylistPicker, ProfileCard, PsnSignIn, SideMenu, TextForm, VIRTUAL_KB, avWaitCheck, holdAccel } from "./ui.js";
-import { BASE_COLUMNS, CARD_COMPACT_X, CARD_X, CAT_GAP, CAT_GAP_SEL, CAT_SEL_Y, CAT_Y, DISC_HOLD_MS, DWELL_MS, GAME_PITCH, GHOST_DX, GRID_BOX, GRID_BOX_SEL, GRID_COLS, GRID_DX, GRID_X0, ICON_AUTO_DEFAULT, __set_ICON_AUTO_DEFAULT, ICON_AUTO_GAIN, __set_ICON_AUTO_GAIN, ICON_AUTO_RGB, __set_ICON_AUTO_RGB, IDLE_FADE_COLS, ITEM_ABOVE_Y, ITEM_BELOW_Y, ITEM_PITCH, ITEM_SPINE_Y, MEDIA_MODES, SPINE_X, applyIconColorVar, autoLogHTML, consoleBadge, dimTo, drillX, dropMedia, esc, iconHTML, isUserContent, itemIcon, labelHTML, resetLabel, setPlayerIconTint, spineNow, __set_spineNow, watchArtLoading, watchArtRatio } from "./xmb-shared.js";
+import { spinAt, AvatarPicker, ColorPicker, Confirm, GameInfoPanel, KeybindMenu, ListPicker, MusicPlayer, PhotoGrid, PlaylistPicker, ProfileCard, PsnSignIn, SideMenu, TextForm, VIRTUAL_KB, avWaitCheck, holdAccel } from "./ui.js";
+import { BASE_COLUMNS, CARD_COMPACT_X, CARD_X, CAT_GAP, CAT_GAP_SEL, CAT_SEL_Y, CAT_Y, DISC_HOLD_MS, DWELL_MS, GAME_PITCH, GHOST_DX, GRID_BOX, GRID_BOX_SEL, GRID_COLS, GRID_DX, GRID_X0, __set_ICON_AUTO_DEFAULT, __set_ICON_AUTO_GAIN, __set_ICON_AUTO_RGB, IDLE_FADE_COLS, ITEM_ABOVE_Y, ITEM_BELOW_Y, ITEM_PITCH, ITEM_SPINE_Y, MEDIA_MODES, SPINE_X, applyIconColorVar, autoLogHTML, consoleBadge, dimTo, drillX, dropMedia, esc, iconHTML, isUserContent, itemIcon, labelHTML, resetLabel, setPlayerIconTint, spineNow, __set_spineNow, watchArtLoading, watchArtRatio } from "./xmb-shared.js";
 import { GameConfirm, GameInfo, GameMenu } from "./gamemenu.js";
 import { IconChooser, UserInfo } from "./usermenus.js";
 import { Input, call } from "./api.js";
 import { PhotoViewer } from "./photoviewer.js";
 import { SECTION_MODES, SectionMethods } from "./sections.js";
 import { VideoPlayer } from "./videoplayer.js";
-import { sysBase, sysUrl } from "./themes.js";
+import { sysBase } from "./themes.js";
 import { SettingsMethods } from "./xmb-settings.js";
 import { IconStyleMethods } from "./xmb-iconstyle.js";
 import { ThemeMethods } from "./xmb-themes.js";
@@ -30,7 +30,11 @@ import { GameMethods } from "./xmb-games.js";
 import { MediaMethods } from "./xmb-media.js";
 import { UserMethods } from "./xmb-users.js";
 import { BrowserMethods } from "./xmb-browser.js";
+import { TrophyMethods, notify } from "./trophies.js";
+import { SteamFriendMethods } from "./steamfriends.js";
 
+// A row closes 0.6 of its distance every 1/30 s (the console's lists, frame by frame): e^(-t / 65.2 ms)
+const SMOOTH_TAU = (1000 / 30) / Math.log(1 / 0.6);
 export class Xmb {
   constructor(audio, wave, cbs) {
     this.audio = audio; this.wave = wave; this.cbs = cbs;
@@ -147,17 +151,28 @@ export class Xmb {
     setPlayerIconTint({ r: 255, g: 255, b: 255, a: 1 });   // (the filter must exist before any player opens)
   }
 
-  async start(manifest, { noAutoLogin = false } = {}) {
+  async start(manifest, { noAutoLogin = false, resume = null } = {}) {
     this.manifest = manifest;
     this.locked = true; this.user = null;
     // (the Icon Style of the last session, from the start: see _iconStyle;
     // only how the icons are drawn: the icon images themselves are read from
     // the saved cache and made at log-in, as before, so the start isn't held up)
+    // (the look before anyone signs in: Keep Personalization Options when Booting)
+    try { await this._bootLookApply(); } catch (e) { console.warn("boot look", e); }
     this._iconStyleAttrs();
     await this._buildColumns();
     // (and drawn in it before anyone signs in, as well: the reactive glass is
     // started and the saved icon pictures loaded, without holding up the start)
     this._applyIconStyle().catch(() => {});
+    // (the window made anew after a game: the user who played it, on that game -- main.js boot)
+    const back = resume && (this.usersFile?.users || []).find((u) => u.id === resume.user);
+    if (back) {
+      this.show();
+      await this._signIn(back, { startAt: "game", game: resume.game || null });
+      this._applyPerformance();
+      setTimeout(() => this._applyResolution(), 400);
+      return;
+    }
     // Automatic Login: that user is logged in at once, on What's New
     const auto = noAutoLogin ? null : (this.usersFile?.users || []).find((u) => u.autoLogin);
     if (auto) {
@@ -274,7 +289,10 @@ export class Xmb {
   // A long job (deleting cache, recognizing files…): the option shows a
   // spinning loading icon and a counter (from the system's "xmb-progress"
   // reports) and a warning, and the menu stays locked on it until it's done.
-  async _runLocked(act, title, fn) {
+  // after: what the result still needs (the menus read again, ...), done while
+  // it's still locked, so the tick only shows once the menu can really be used
+  // (not a second loading, on the clock, after it)
+  async _runLocked(act, title, fn, after = null) {
     if (this._preloadState === "loading") return undefined;
     this._preloadState = "loading"; this._preloadAct = act; this._preloadTitle = title;
     this._preloadDone = 0; this._preloadTotal = 0;
@@ -291,7 +309,10 @@ export class Xmb {
     const ev = window.__TAURI__?.event;
     if (ev?.listen) { try { un = await ev.listen("xmb-progress", (e) => { const p = e.payload || {}; this._preloadDone = p.done | 0; this._preloadTotal = p.total | 0; redraw(); }); } catch (e) {} }
     let r;
-    try { r = await fn((t) => { this._preloadTitle = t; this._preloadDone = 0; this._preloadTotal = 0; redraw(); }); }
+    try {
+      r = await fn((t) => { this._preloadTitle = t; this._preloadDone = 0; this._preloadTotal = 0; redraw(); });
+      if (after) { try { await after(r); } catch (e) { console.warn("after", e); } }
+    }
     finally { if (un) { try { un(); } catch (e) {} } }
     // (a redraw still waiting for its frame would put the box back up)
     if (raf) { cancelAnimationFrame(raf); raf = 0; }
@@ -306,18 +327,9 @@ export class Xmb {
     if (!on) { if (el) el.classList.remove("show"); return; }
     if (!el) { el = document.createElement("div"); el.id = "lockbox"; document.body.appendChild(el); }
     const n = this._preloadTotal ? ` ${this._preloadDone}/${this._preloadTotal}` : "";
-    el.innerHTML = `<div class="lb-panel"><div class="lb-title">${esc(this._preloadTitle || "Please wait...")}<span class="d-status"><img class="d-spin" src="./assets/icons/system/loading_icon.png" alt="">${n}</span></div>`
+    el.innerHTML = `<div class="lb-panel"><div class="lb-title">${esc(this._preloadTitle || "Please wait...")}<span class="d-status"><img class="d-spin" style="${spinAt()}" src="./assets/icons/system/loading_icon.png" alt="">${n}</span></div>`
       + `<div class="lb-sub">Please wait. The system could slow down while this runs. Do not close or navigate away until it finishes.</div></div>`;
     el.classList.add("show");
-  }
-  // Newly recognized games waiting for their art (Automatic Scraping): fetched
-  // now, with the menu waiting on it
-  async _scrapeWaiting(act) {
-    let n = 0; try { n = await call("game_scrape_waiting"); } catch (e) {}
-    if (!n) return 0;
-    const got = await this._runLocked(act || "__scrape__", "Getting game art online...", () => call("game_scrape_queued").catch(() => 0));
-    await this._refreshGameColumn();
-    return got || 0;
   }
   // re-derive the open submenu's items in place, keeping the cursor
   _rebuildLevel(fn) {
@@ -335,9 +347,15 @@ export class Xmb {
     el._xmbPick(); return true;
   }
   // ------------------------------------------------------------- rendering
-  _level() { return this.levels[this.levels.length - 1]; }
+  // (none before the menus are built: a start's early calls)
+  _level() { return this.levels ? this.levels[this.levels.length - 1] : undefined; }
 
   _render() {
+    // (in Trophy Collection, Settings' menus, Account Management's: the
+    // background blurred, styles.css body.lvl-blur)
+    document.body.classList.toggle("lvl-blur", !!(this.levels && this.levels.some((l) => l.blurBg)));
+    // (in Trophy Collection, signed in: the user's mini card top right, trophies.js)
+    this._trophyMiniSync && this._trophyMiniSync();
     const w = this.root.clientWidth, h = this.root.clientHeight;
     this.root.innerHTML = `
       <div class="bg-layer"></div>
@@ -456,8 +474,25 @@ export class Xmb {
   // the current section's icon as a flat picture (for the loading icon in its
   // lists): the user's own media and avatars (Users, Photo, Music, Video, Game,
   // Friends and custom sections), not the system's own sections
+  _arrowPastArt(el) {
+    const fr = el.querySelector(".art-frame, .art-img"), ar = el.querySelector(".drill-arrow");
+    if (!fr || !ar || !el.isConnected) return;
+    const e = el.getBoundingClientRect(), f = fr.getBoundingClientRect(), a = ar.getBoundingClientRect();
+    if (!f.width) return;
+    const unit = window.innerHeight / 1080;
+    const want = f.right + 45 * unit + a.width / 2 - (e.left + e.width / 2);
+    ar.style.marginLeft = `${Math.max(want, 0)}px`;
+  }
   _secFlat() {
-    const c = this.columns && this.columns[this.selCat];
+    let c = this.columns && this.columns[this.selCat];
+    // (Trophy Collection's lists: the Game section's icon, as the console's)
+    const top = this.levels && this.levels.length > 1 && this._level();
+    if (top && (top.items || []).some((i) => i.troph || i.tgame)) c = this.columns.find((x) => x.id === "game") || c;
+    return this._secFlatOf(c);
+  }
+  // a section's own icon (drawn flat in the middle of the loading icon): the section, or its id
+  _secFlatOf(c) {
+    if (typeof c === "string") c = (this.columns || []).find((x) => x.id === c);
     if (!c || ["settings", "tvvideo", "network", "psn"].includes(c.id) || !c.icon) return null;
     const n = c.icon;
     if (n.startsWith("url:")) return n.slice(4);
@@ -482,15 +517,26 @@ export class Xmb {
         const it = lvl.items[lvl.sel];
         const el = document.createElement("div");
         el.className = "item item-anchor";
+        // (a Settings option: its icon at the same smaller size there too, so
+        // going into it, it grows from the size it had in the list)
+        const setopt = (x) => x && x.icon && x.icon.sys === "icon_setting_item.png" && this.columns?.[this.selCat]?.id === "settings";
+        if (setopt(it)) el.classList.add("item-setopt");
         el.innerHTML = `${itemIcon(it)}<img class="drill-arrow" src="./assets/icons/system/arrow_left.png" alt="">`;
         this.$items.appendChild(el); lvl._anchorEl = el; watchArtRatio(el);
+        // (a game -- in Trophy Collection, in its Game Settings --: its wide picture; the arrow
+        // 45 px past its right edge, as the console's, never over it; placed again once its
+        // picture has loaded and taken its width)
+        if (it.tgame || it.kind === "game" || (it.icon && it.icon.gameArt)) {
+          const place = () => this._arrowPastArt(el); requestAnimationFrame(place); setTimeout(place, 350);
+          el.querySelectorAll("img:not(.drill-arrow)").forEach((im) => { if (!im.complete) im.addEventListener("load", () => setTimeout(place, 50), { once: true }); });
+        }
         // the parent's other rows stay barely visible (icons only)
         lvl._ghosts = [];
         if (li === active - 1) {
           lvl.items.forEach((o, j) => {
             if (j === lvl.sel || Math.abs(j - lvl.sel) > 10 || o.kind === "playercard" || o.kind === "friendcard") return;
             const g = document.createElement("div");
-            g.className = "item item-ghost";
+            g.className = "item item-ghost" + (setopt(o) ? " item-setopt" : "");
             g.innerHTML = itemIcon(o); watchArtRatio(g);
             this.$items.appendChild(g); lvl._ghosts.push({ j, el: g });
           });
@@ -597,6 +643,10 @@ export class Xmb {
     }
     // a setting's current choice, on the right of its row (IMG_3605)
     if (it.kind === "setting" && it.ctl !== "sysinfo") el.insertAdjacentHTML("beforeend", `<div class="item-setval"></div>`);
+    // Trophy Collection's rows: a game's progress, a trophy's grade (trophies.js)
+    if (it.tgame || it.troph) this._trophyDecorate(el, it);
+    // the Settings column's options: their wrench icon at the console's size (styles.css)
+    if (it.icon && it.icon.sys === "icon_setting_item.png" && this.columns?.[this.selCat]?.id === "settings") el.classList.add("item-setopt");
     watchArtLoading(el, this._secFlat()); watchArtRatio(el);
     // (the list scrolling fast, held: the picture waits until the scrolling
     // slows down (the loading icon and the section's icon meanwhile), so the
@@ -629,6 +679,13 @@ export class Xmb {
     const sel = lvl.sel, n = lvl.items.length;
     const tops = new Array(n);
     tops[sel] = sy;
+    // (a Trophy Collection game with its △ panel open, drawn as one not chosen: the rows evenly
+    // spaced, as if none was chosen -- no room left for the chosen row's bigger picture)
+    if (lvl.items[sel] && lvl.items[sel]._held) {
+      for (let j = sel + 1; j < n; j++) tops[j] = tops[j - 1] + (rowH(lvl.items[j - 1]) + rowH(lvl.items[j])) / 2;
+      for (let j = sel - 1; j >= 0; j--) tops[j] = tops[j + 1] - (rowH(lvl.items[j + 1]) + rowH(lvl.items[j])) / 2;
+      return tops;
+    }
     const firstAbove = li === 0 ? h * ITEM_ABOVE_Y : sy - (h * ITEM_BELOW_Y - sy);
     for (let j = sel + 1; j < n; j++) {
       const r = rowH(lvl.items[j]);
@@ -676,15 +733,21 @@ export class Xmb {
       this.$items.classList.toggle("grid", !!lvl.grid);
       if (lvl.grid) { this._layoutGrid(lvl, sx, sy, w, h); return; }
       const tops = this._rowTops(lvl, li, h);
+      // (each row's place on a whole pixel of the screen -- 1.25 of the page's at 125% --: a place
+      // between two, its name, details and picture each drawn to the nearer one, the row came to
+      // rest a pixel off one way, then the other, as its last step of the way crossed the middle)
+      const dpr = window.devicePixelRatio || 1, onPx = (v) => Math.round(v * dpr) / dpr;
       lvl.items.forEach((it, j) => {
         if (!it._el) return;
         const isSel = j === sel;
         const isCard = isCardIt(it);
-        it._el.classList.toggle("sel", isSel);
-        it._el.style.left = `${isCard ? sx - (isSel ? CARD_X : CARD_COMPACT_X) * w : sx}px`;
-        it._el.style.top = `${tops[j]}px`;
+        // (a Trophy Collection game with its △ panel open: drawn as the games not chosen)
+        const lit = isSel && !it._held;
+        it._el.classList.toggle("sel", lit);
+        it._el.style.left = `${onPx(isCard ? sx - (isSel ? CARD_X : CARD_COMPACT_X) * w : sx)}px`;
+        it._el.style.top = `${onPx(tops[j])}px`;
         // every non-selected row is drawn at the same dim level (as in the refs)
-        dimTo(it._el, isSel ? "1" : "0.55");
+        dimTo(it._el, lit ? "1" : "0.55");
         it._el.style.zIndex = isSel ? "5" : "1";
         // songs / photos / videos / games: a title too long for the screen
         // scrolls (marquee) instead of running off the edge
@@ -702,6 +765,24 @@ export class Xmb {
             const left = (parseFloat(it._el.style.left) || 0) + ml;
             t.style.maxWidth = `${Math.max(120, w * 0.975 - left)}px`;
             t.classList.add("mq");
+          }
+        } else if (it.tgame || it.troph) {
+          // Trophy Collection: a name too long for the room before its
+          // Platinum mark and percentage (or the screen's edge) scrolls
+          // (marquee) instead of running under them
+          const t = it._el.querySelector(".il-title");
+          if (t) {
+            const num = it._el.querySelector(".tg-num");
+            const fit = () => {
+              if (!t.isConnected) return;
+              const right = num ? num.getBoundingClientRect().left - 0.02 * w : w * 0.975;
+              t.style.maxWidth = `${Math.max(120, right - t.getBoundingClientRect().left)}px`;
+              t.classList.add("mq");
+            };
+            fit();
+            // (measured while the chosen row's name is still moving into place, the room can come out
+            // too wide and the name not scroll: measured again once it's there; the marquee follows)
+            clearTimeout(t._fitT); t._fitT = setTimeout(fit, 450);
           }
         } else if (it.kind === "setting") {
           // a setting's name too long for the room before its value (shown
@@ -793,7 +874,8 @@ export class Xmb {
     if (it.kind === "action" && it.act === pAct && this._preloadState) {
       if (this._preloadState === "loading") {
         const n = this._preloadTotal ? ` ${this._preloadDone}/${this._preloadTotal}` : "";
-        status = `<span class="d-status"><img class="d-spin" src="./assets/icons/system/loading_icon.png" alt="">${n}</span>`;
+        // (drawn again at each step of the count: the icon goes on turning from where it was)
+        status = `<span class="d-status"><img class="d-spin" style="${spinAt()}" src="./assets/icons/system/loading_icon.png" alt="">${n}</span>`;
       } else if (this._preloadState === "done") {
         status = `<span class="d-status"><img class="d-tick" src="./assets/icons/system/tick.png" alt=""></span>`;
       }
@@ -810,7 +892,10 @@ export class Xmb {
     if (!isCard && it._el) {
       const lab = it._el.querySelector(".item-label");
       if (lab) {
-        lab.querySelector(".il-title").innerHTML = esc(title || "") + status;
+        // (the same name as shown: left as it is -- written again, a long name scrolling
+        // (marquee.js) would start over, or stop, at every redraw)
+        const tl = lab.querySelector(".il-title"), html = esc(title || "") + status;
+        if (tl._srcHTML !== html || !tl.isConnected || (!tl.querySelector(":scope > .mq-inner") && tl.innerHTML !== html)) { tl.innerHTML = html; tl._srcHTML = html; }
         lab.querySelector(".il-body").innerHTML = (!panel && (sub || settingDesc) && revealed)
           ? (sub ? `<div class="d-sub${preloading ? " d-warn" : ""}${it.userSub ? " il-usub" : ""}">${esc(sub)}</div>` : "") + settingDesc + warnLine : autoLogHTML(it);
         it._labelDirty = true;
@@ -850,6 +935,8 @@ export class Xmb {
   // --------------------------------------------------------- selection FX
   _onSelect() {
     this._syncGlowPulse();
+    // (Steam friends: the levels of the ones near the cursor, steamfriends.js)
+    if (this.columns && this.columns[this.selCat]?.id === "friends" && this._sfLevelsNear) this._sfLevelsNear();
     if (window.__syncGlows) window.__syncGlows();   // (main.js: every glow on one clock)
     this._armIdle();
     clearTimeout(this.dwellTimer); this._stopGameMedia(); this._reveal = false;
@@ -929,16 +1016,24 @@ export class Xmb {
     this._liveRefresh(this.columns[i].id);
   }
 
-  _drill(it) {
-    this.audio.play("enter", 0.6);
+  _drill(it, synced = false) {
+    // Trophy Collection: the trophy sync first (trophies.js), then this again
+    if (it.trophyRoot && !synced) { this.audio.play("enter", 0.6); this._trophyEnter(it); return; }
+    // Account Games: the accounts' games read first (steamfriends.js)
+    if (it.acctGames && !synced) { this.audio.play("enter", 0.6); this._acctGamesEnter(it); return; }
     // childrenFn lets a submenu compute its items fresh each time it opens (used
     // by Saved Presets, which changes as presets are added/removed).
     const children = it.childrenFn ? it.childrenFn.call(this) : it.children;
+    // Trophy Collection without any game's trophies: not entered
+    if (it.trophyRoot && !(children || []).length) { this.audio.play("error", 0.4); return; }
+    if (!synced) this.audio.play("enter", 0.6);
     const friendMenu = it.childrenFn === this._friendPersonalizationItems;
     // a folder of pictures: shown as a grid, five to a row (as on the console)
     const grid = (children || []).length > 0 && children.every((c) => c.kind === "photo");
     const snap = this._drillSnap();
     this.levels.push({ items: children, sel: 0, head: { icon: it.icon, label: it.title }, friendMenu, grid, inFolder: true,
+      // (the background blurred while in: Trophy Collection, Settings' menus, Account Management's)
+      blurBg: !!(it.trophyRoot || it.tgame || it.psnAuth || this.columns[this.selCat]?.id === "settings" || this._level()?.blurBg),
       rebuild: it.childrenFn ? () => it.childrenFn.call(this) : null });
     this._render(); this._onSelect();
     this._drillAnim(snap, 1);
@@ -1051,7 +1146,7 @@ export class Xmb {
       case "newuser": this._newUser(); break;
       case "setting": this._settingMenu(it); break;
       case "action": return this._runAction(it.act, it);
-      case "playercard": this._psnProfile(); break;
+      case "playercard": this.audio.play("enter", 0.6); this._psnProfile(); break;
       case "friendcard": this.audio.play("enter", 0.4); break;
       case "music": this._openMusicPlayer(); break;
       case "photo": this._openViewer("photo", it.media); break;
@@ -1066,7 +1161,9 @@ export class Xmb {
     if (it.kind === "game") this._gameOptions(it.game);
     else if (it.kind === "user") this._userOptions(it.user);
     else if (it.psnAuth) this._accountOptions(it);
-    else if (it.kind === "playercard") this._psnProfile();
+    // (the user's card: its profile only with Cross, not Triangle)
+    else if (it.kind === "playercard") return;
+    else if (it.tgame) this._trophyGameOptions(it);
     else if (it.opts && it.opts.length) this._itemOptions(it);
   }
   // Generic options (triangle) menu for an item that carries `opts`
@@ -1077,7 +1174,7 @@ export class Xmb {
       (choice) => { this.sideMenu.close(); this.overlay = null; this._runAction(choice.id); },
       () => { this.sideMenu.close(); this.overlay = null; });
   }
-  _persistUser() { call("save_user", { user: this.user }); this.cbs.onProfileChange(this.user); }
+  _persistUser() { call("save_user", { user: this.user }); this.cbs.onProfileChange(this.user); this._bootLookSave && this._bootLookSave(); }
   // The System can't save in its own folder (installed in Program Files with
   // the .msi): users, settings, recognized games and media, and the log aren't kept
   warnNotWritable(dir) {
@@ -1145,6 +1242,7 @@ export class Xmb {
     if (act && act.startsWith("bgpl_del::")) { const [w, i] = act.slice(10).split("::"); return this._bgPlaylistDelete(w, parseInt(i, 10)); }
     if (act === "theme_custom_create") return this._createCustomTheme();
     if (act && act.startsWith("theme_extract::")) return this._extractTheme(act.slice("theme_extract::".length));
+    if (act && act.startsWith("theme_delete::")) return this._deleteCustomTheme(act.slice("theme_delete::".length));
     if (act && act.startsWith("theme_use::")) { const [kind, ...k] = act.slice(11).split("::"); return this._themeUse(kind, k.join("::")); }
     if (act && act.startsWith("wave_delete::")) return this._deleteWavePreset(parseInt(act.slice("wave_delete::".length), 10));
     if (act && act.startsWith("theme_delete::")) return this._deleteThemePreset(parseInt(act.slice("theme_delete::".length), 10));
@@ -1163,8 +1261,11 @@ export class Xmb {
     if (act && act.startsWith("gsrc_del::")) return this._gsrcDelete(act.slice("gsrc_del::".length));
     if (act && act.startsWith("gman_del::")) return this._gmanDelete(act.slice("gman_del::".length));
     if (act && /^(sec|sub)_/.test(act)) return this._sectionAction(act);
+    if (act === "trophy_info") return this._trophyInfo(it);
+    if (act && act.startsWith("acct_")) return this._acctAction(act, it);
     if (act === "gsrc_add") return this._gsrcAdd();
     if (act === "gsrc_scan") return this._gsrcScan(false);
+    if (act === "art_steam" || act === "art_db") return this._artScrape(act);
     switch (act) {
       case "psplus_toggle": {   // ✕ only: the player's own PS Plus mark (card + info box)
         const c = this._friendCfg(); c.playerPlus = !c.playerPlus; this.user.friendConfig = c; this._persistUser();
@@ -1241,21 +1342,23 @@ export class Xmb {
     try {
       await call("take_screenshot", { name: `Screenshot - ${date} ${time}` });
       this.audio.play("enter", 0.5);
-      this._shotFeedback("Screenshot saved to Photos");
+      this._shotFeedback("Screenshot saved to Photos", undefined, true);
       this._refreshPhotoColumn();
     } catch (e) {
       this.audio.play("error", 0.4);
-      this._shotFeedback("Couldn't take the screenshot");
+      this._shotFeedback("Couldn't take the screenshot", "error");
     }
     setTimeout(() => { this._shotBusy = false; }, 600);
   }
-  _shotFeedback(msg) {
-    let fl = document.querySelector(".shot-flash"), t = document.querySelector(".shot-toast");
-    if (!fl) { fl = document.createElement("div"); fl.className = "shot-flash"; document.body.appendChild(fl); }
-    if (!t) { t = document.createElement("div"); t.className = "shot-toast"; document.body.appendChild(t); }
-    t.textContent = msg;
-    fl.classList.add("on"); requestAnimationFrame(() => requestAnimationFrame(() => fl.classList.remove("on")));
-    t.classList.add("on"); clearTimeout(this._toastT); this._toastT = setTimeout(() => t.classList.remove("on"), 2200);
+  // A notification near the top right; flash: the screen's flash first, only for a screenshot taken.
+  _shotFeedback(msg, kind, flash = false) {
+    if (flash) {
+      let fl = document.querySelector(".shot-flash");
+      if (!fl) { fl = document.createElement("div"); fl.className = "shot-flash"; document.body.appendChild(fl); }
+      fl.classList.add("on"); requestAnimationFrame(() => requestAnimationFrame(() => fl.classList.remove("on")));
+    }
+    // (in the trophy pop-up's look, near the top right: trophies.js)
+    notify(msg, undefined, kind);
   }
   _turnOff() {
     // PS3 asks before powering down; Yes closes the app. Centred title with a
@@ -1398,6 +1501,10 @@ export class Xmb {
     if (!col || !IDLE_FADE_COLS.includes(col.id) || this.overlay) return;
     const lvl = this._level(); const it = lvl && lvl.items[lvl.sel];
     if (!it) return;
+    // (Trophy Collection -- its games, a game's trophies -- and Account Management with all
+    // its menus: the other names always stay)
+    if (it.tgame || it.troph) return;
+    if (this.levels.some((l, i) => i < this.levels.length - 1 && l.items[l.sel] && l.items[l.sel].acctMgmt)) return;
     this._idleT = setTimeout(() => {
       const l2 = this._level();
       if (!this.overlay && l2 && l2.items[l2.sel] === it && this.$items) this.$items.classList.add("labels-idle");
@@ -1413,7 +1520,9 @@ export class Xmb {
     if (this._placing) { this._placeInput(a); return; }     // moving a section
     if (this._busy) return;                                   // converting a video
     if (this._actBusy) return;                                // something chosen is still working (see _trackBusy)
-    if (a !== "up" && a !== "down") this._glideEnd(true);
+    if (a !== "up" && a !== "down") { this._glideEnd(true); if (this._smoothEls || (this.$items && this.$items.classList.contains("smooth"))) this._smoothEnd(); }
+    // (a button pressed at the start, before the menus are built: nothing to move yet)
+    if (!this.levels || !this.levels.length || !this.columns) return;
     const w = this.root.clientWidth, h = this.root.clientHeight;
     const lvl = this._level();
     switch (a) {
@@ -1423,6 +1532,7 @@ export class Xmb {
       // a step of up to a tenth of the list, so short menus move one by one)
       case "up": case "down": {
         const d = a === "up" ? -1 : 1, n = lvl.items.length;
+        if (this._smoothList(lvl)) { this._smoothStep(lvl, d); break; }
         const k = holdAccel("xmb-list:" + a, lvl.grid ? Math.floor(n / GRID_COLS / 10) : Math.floor(n / 10));
         // (sped up: the list scrolls there row by row, see _glide)
         if (k > 1 || (this._gl && this._gl.lvl === lvl && this._gl.d === d)) { this._glideBy(lvl, d, k); break; }
@@ -1441,13 +1551,112 @@ export class Xmb {
     }
   }
 
+  // The media lists (Music, Photo, Video, Game, Friends, your own sections, Trophy Collection's;
+  // not the grids) scroll as the console's do. Measured on its capture frame by frame: a held
+  // direction repeats 300 ms after the press, then a row every 66.7 ms (main.js holdPace), and
+  // the rows never jump or restart a slide: each one keeps closing the distance to its place at
+  // the same rate (about 0.6 of what's left every 1/30 s), wherever it is when its place moves.
+  // So the list follows the button smoothly, about a row behind at full speed, the row passing
+  // the cursor's place swelling as it goes by, and everything settles on the row stopped at.
+  // The rows are moved here, frame by frame (_smoothTick): each is given its new place at once
+  // and drawn as far from it as it was, that distance then shrinking at the console's rate.
+  // (styles.css .item-col.smooth: no slide of their own meanwhile; their size eases the same way)
+  // (every list of the XMB: the media and games, Settings, PlayStation Network, Users, your own
+  // sections, Trophy Collection, the photo / video grids)
+  _smoothList(lvl) { return !!lvl && Array.isArray(lvl.items) && lvl.items.length > 1; }
+  // where each row of the list is drawn now (its place and what's left of its way there)
+  _smoothSeen(lvl) {
+    const m = new Map();
+    for (const it of lvl.items) { const el = it._el; if (el && el.style.top) m.set(el, [(parseFloat(el.style.left) || 0) + (el._sx || 0), (parseFloat(el.style.top) || 0) + (el._sy || 0)]); }
+    return m;
+  }
+  // the rows, at their new places, drawn where they were; then moved there frame by frame
+  _smoothFrom(lvl, seen) {
+    const els = [];
+    for (const it of lvl.items) {
+      const el = it._el; if (!el) continue;
+      const was = seen.get(el);
+      // (a row just made, off the screen: at its place)
+      if (!was) { el._sx = el._sy = 0; continue; }
+      el._sx = was[0] - (parseFloat(el.style.left) || 0); el._sy = was[1] - (parseFloat(el.style.top) || 0);
+      el.style.translate = this._smoothXY(el);
+      els.push(el);
+    }
+    if (this._smoothEndRaf) { cancelAnimationFrame(this._smoothEndRaf); this._smoothEndRaf = 0; }
+    this._smoothEls = els; this._smoothLvl = lvl;
+    if (!this._smoothRaf) { this._smoothAt = performance.now(); this._smoothRaf = requestAnimationFrame(() => this._smoothTick()); }
+  }
+  _smoothTick() {
+    this._smoothRaf = 0;
+    const now = performance.now(), dt = Math.min(100, now - this._smoothAt); this._smoothAt = now;
+    // (0.6 of the distance left every 1/30 s, whatever the screen's own rate: e^(-dt / 65.2 ms))
+    const keep = Math.exp(-dt / SMOOTH_TAU);
+    let moving = false;
+    for (const el of this._smoothEls || []) {
+      if (!el._sx && !el._sy) continue;
+      el._sx *= keep; el._sy *= keep;
+      const xy = this._smoothXY(el);
+      if (!xy) { el._sx = el._sy = 0; el.style.translate = ""; }
+      else { el.style.translate = xy; moving = true; }
+    }
+    if (moving) this._smoothRaf = requestAnimationFrame(() => this._smoothTick());
+    // (the rows' usual slides back a frame after the last of them is in place, not in the same
+    // one: given back together, the last pixel slid into place again, a fraction at a time)
+    else this._smoothEndRaf = requestAnimationFrame(() => { this._smoothEndRaf = 0; if (!this._smoothRaf) this._smoothEnd(); });
+  }
+  // what's left of a row's way, as its translate ("" once there): in whole pixels of the screen
+  // -- not of the page, 1.25 of the screen's with Windows' display at 125% -- and there the moment
+  // what's left rounds to none. A row's name and details (drawn on whole pixels of the screen) and
+  // its picture (not) went by a pixel each their own way at every step, up and down, and the last
+  // pixel crept into place after the row seemed to have stopped
+  _smoothXY(el) {
+    const r = window.devicePixelRatio || 1, x = Math.round(el._sx * r) / r, y = Math.round(el._sy * r) / r;
+    return x || y ? `${x.toFixed(4)}px ${y.toFixed(4)}px` : "";
+  }
+  // (at rest, or something else pressed: the rows at their places, their usual slides back)
+  _smoothEnd() {
+    if (this._smoothRaf) { cancelAnimationFrame(this._smoothRaf); this._smoothRaf = 0; }
+    if (this._smoothEndRaf) { cancelAnimationFrame(this._smoothEndRaf); this._smoothEndRaf = 0; }
+    for (const el of this._smoothEls || []) { el._sx = el._sy = 0; el.style.translate = ""; }
+    this._smoothEls = null;
+    if (this.$items) this.$items.classList.remove("smooth");
+  }
+  _smoothStep(lvl, d) {
+    const n = lvl.items.length, rep = !!window.__inputRepeat;
+    // (held for long in a long list: more rows a repeat, at the same pace)
+    this._smoothN = rep ? (this._smoothN || 0) + 1 : 0;
+    const rowsN = lvl.grid ? Math.ceil(n / GRID_COLS) : n;
+    const k = Math.max(1, Math.min(this._smoothN < 45 ? 1 : this._smoothN < 90 ? 2 : this._smoothN < 150 ? 4 : 10, Math.floor(rowsN / 10)));
+    let to;
+    if (lvl.grid) {
+      // (a grid: a row up or down, in the same column; past the first / last row: to it)
+      to = lvl.sel + d * GRID_COLS * k;
+      if (to < 0) { if (lvl.sel < GRID_COLS) return; to = lvl.sel % GRID_COLS; }
+      if (to >= n) { if (Math.floor(lvl.sel / GRID_COLS) === Math.floor((n - 1) / GRID_COLS)) return; to = n - 1; }
+    } else to = Math.max(0, Math.min(n - 1, lvl.sel + d * k));
+    if (to === lvl.sel) return;
+    if (this._gl) this._glideEnd(true);
+    lvl.sel = to;
+    this.audio.play(d < 0 ? "cursor_up" : "cursor_down", 0.5);
+    const seen = this._smoothSeen(lvl);
+    this.$items.classList.remove("glide", "glide-fast"); this.$items.classList.add("smooth");
+    this._layoutItems(this.root.clientWidth, this.root.clientHeight);
+    this._smoothFrom(lvl, seen);
+    if (window.__syncGlows) window.__syncGlows();
+    clearTimeout(this._smoothSelT);
+    // (pressed: its details at once; held: the row's own lines as it passes, the rest -- its
+    // background, preview, music -- once the list stops on a row)
+    if (!rep) { this._onSelect(); return; }
+    this._smoothSelT = setTimeout(() => { if (this._level() === lvl && !this.overlay) this._onSelect(); }, 160);
+  }
   // The columns where a held Up / Down can scroll far (Music, Photo, Video,
   // Game, Friends and your own sections): there, once the hovered row starts
   // to fall behind its place while scrolling, the rows are put in place at
   // once instead of sliding (see _glideStep); elsewhere they always slide
   _snapScroll() {
     const id = this.columns?.[this.selCat]?.id || "";
-    return ["music", "photo", "video", "game", "friends"].includes(id) || id.startsWith("sec:");
+    // (and Trophy Collection's lists: the games, a game's trophies)
+    return ["music", "photo", "video", "game", "friends"].includes(id) || id.startsWith("sec:") || !!this._level()?.trophyFn;
   }
   // A held Up / Down (not separate presses, however quick) in those columns:
   // once the hovered row has fallen further behind its place than one step
@@ -1551,4 +1760,4 @@ export class Xmb {
   }
 }
 
-Object.assign(Xmb.prototype, SectionMethods, SettingsMethods, IconStyleMethods, ThemeMethods, BackgroundMethods, FriendMethods, PsnMethods, GameMethods, MediaMethods, UserMethods, BrowserMethods);
+Object.assign(Xmb.prototype, SectionMethods, SettingsMethods, IconStyleMethods, ThemeMethods, BackgroundMethods, FriendMethods, PsnMethods, GameMethods, MediaMethods, UserMethods, BrowserMethods, TrophyMethods, SteamFriendMethods);
